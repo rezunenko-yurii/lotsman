@@ -1,0 +1,22 @@
+[project]
+name = "codemap"
+version = "0.1.0"
+description = "Local codebase index for AI agents: repo map, symbol search, reference graph"
+requires-python = ">=3.10"
+dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-language-pack>=0.13",
+]
+
+[project.optional-dependencies]
+embeddings = ["model2vec>=0.3"]
+
+[project.scripts]
+codemap = "codemap.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["codemap*"]

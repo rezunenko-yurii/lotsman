@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS idents (
     name TEXT NOT NULL,
     count INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS rank_cache (
+    path TEXT NOT NULL,
+    ident TEXT NOT NULL,
+    rank REAL NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_idents_name ON idents(name);
@@ -85,6 +90,34 @@ class Store:
         self.conn.execute("DELETE FROM idents")
         self.conn.execute("DELETE FROM symbols")
         self.conn.execute("DELETE FROM files")
+        self.conn.execute("DELETE FROM rank_cache")
+        self.conn.commit()
+
+    # --- rank cache ---------------------------------------------------------
+
+    def state_stamp(self) -> str:
+        """Digest of the indexed content state; changes iff any file changes."""
+        import hashlib
+        h = hashlib.sha256()
+        for path, sha in self.conn.execute(
+                "SELECT path, sha FROM files ORDER BY path"):
+            h.update(path.encode())
+            h.update(sha.encode())
+        return h.hexdigest()[:16]
+
+    def load_rank_cache(self, stamp: str) -> list[tuple[str, str, float]] | None:
+        if self.get_meta("rank_cache_stamp") != stamp:
+            return None
+        rows = self.conn.execute(
+            "SELECT path, ident, rank FROM rank_cache ORDER BY rank DESC").fetchall()
+        return rows or None
+
+    def save_rank_cache(self, stamp: str,
+                        ranked: list[tuple[str, str, float]]) -> None:
+        self.conn.execute("DELETE FROM rank_cache")
+        self.conn.executemany(
+            "INSERT INTO rank_cache(path, ident, rank) VALUES(?,?,?)", ranked)
+        self.set_meta("rank_cache_stamp", stamp)
         self.conn.commit()
 
     # --- incremental file bookkeeping -------------------------------------

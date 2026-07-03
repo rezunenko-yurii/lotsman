@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import shutil
+import sys
 import tempfile
 import unittest
 from collections import Counter
@@ -204,6 +206,34 @@ class TestEndToEnd(FixtureRepoMixin, unittest.TestCase):
         self.assertEqual(refs["pkg/app.py"], 3)  # import + 2 calls
 
 
+class TestRankCache(FixtureRepoMixin, unittest.TestCase):
+    def test_cache_populated_and_hit(self):
+        self.assertIsNone(self.store.load_rank_cache(self.store.state_stamp()))
+        out1 = repomap.generate_map(self.store, budget=512)
+        cached = self.store.load_rank_cache(self.store.state_stamp())
+        self.assertTrue(cached)
+        out2 = repomap.generate_map(self.store, budget=512)  # served from cache
+        self.assertEqual(out1, out2)
+
+    def test_cache_invalidated_on_change(self):
+        repomap.generate_map(self.store, budget=512)
+        stamp_before = self.store.state_stamp()
+        (self.tmp / "pkg" / "core.py").write_text(
+            "def brand_new_core():\n    pass\n")
+        indexer.index_repo(self.tmp, self.store)
+        stamp_after = self.store.state_stamp()
+        self.assertNotEqual(stamp_before, stamp_after)
+        self.assertIsNone(self.store.load_rank_cache(stamp_after))
+
+    def test_personalized_bypasses_cache(self):
+        repomap.generate_map(self.store, budget=512)  # warm cache
+        out = repomap.generate_map(self.store, budget=512,
+                                   mentions={"prepare_fuel"})
+        self.assertIn("prepare_fuel", out)
+        # cache row content must still be the default ranking (unchanged stamp)
+        self.assertTrue(self.store.load_rank_cache(self.store.state_stamp()))
+
+
 class TestSearchModes(FixtureRepoMixin, unittest.TestCase):
     def _mk_hit(self, path: str, line: int, score: float) -> Hit:
         return Hit(score, SymbolRow(path, "x", "function", line, line, "def x():"))
@@ -246,6 +276,77 @@ class TestSearchModes(FixtureRepoMixin, unittest.TestCase):
             "SELECT COUNT(*) FROM symbols WHERE vector IS NULL").fetchone()[0]
         self.assertEqual(missing, 1)  # only the rewritten file's symbol
         self.assertEqual(embed.embed_missing(self.store), 1)
+
+
+class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
+    def _handle(self, server, msg):
+        from codemap.mcp_server import McpServer  # noqa: F401
+        return server.handle(msg)
+
+    def test_protocol_flow(self):
+        from codemap.mcp_server import McpServer
+        server = McpServer(self.tmp)
+        server.store = self.store  # reuse fixture store
+
+        init = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                              "params": {"protocolVersion": "2025-01-01"}})
+        self.assertEqual(init["result"]["protocolVersion"], "2025-01-01")
+        self.assertEqual(init["result"]["serverInfo"]["name"], "codemap")
+
+        self.assertIsNone(server.handle(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}))
+
+        tools = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        names = {t["name"] for t in tools["result"]["tools"]}
+        self.assertEqual(names, {"map", "search", "outline", "defs", "refs"})
+
+        call = server.handle({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "search",
+                       "arguments": {"query": "prepare fuel", "mode": "bm25"}}})
+        self.assertFalse(call["result"]["isError"])
+        self.assertIn("pkg/core.py", call["result"]["content"][0]["text"])
+
+        refs = server.handle({
+            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {"name": "refs", "arguments": {"name": "prepare_fuel"}}})
+        self.assertIn("referenced by:", refs["result"]["content"][0]["text"])
+
+    def test_errors(self):
+        from codemap.mcp_server import McpServer
+        server = McpServer(self.tmp)
+        server.store = self.store
+
+        bad_method = server.handle({"jsonrpc": "2.0", "id": 1, "method": "nope"})
+        self.assertEqual(bad_method["error"]["code"], -32601)
+
+        bad_tool = server.handle({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "explode", "arguments": {}}})
+        self.assertEqual(bad_tool["error"]["code"], -32602)
+
+        # tool raising (missing required arg) -> isError result, not a crash
+        broken = server.handle({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "outline", "arguments": {}}})
+        self.assertTrue(broken["result"]["isError"])
+
+    def test_stdio_roundtrip(self):
+        import subprocess
+        msgs = "\n".join(json.dumps(m) for m in [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "defs", "arguments": {"name": "Engine"}}},
+        ]) + "\n"
+        proc = subprocess.run(
+            [sys.executable, "-m", "codemap", "--repo", str(self.tmp), "mcp"],
+            input=msgs, capture_output=True, text=True, timeout=120,
+            cwd=Path(__file__).resolve().parent.parent)
+        lines = [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
+        self.assertEqual(len(lines), 2)  # notification gets no response
+        self.assertEqual(lines[0]["id"], 1)
+        self.assertIn("pkg/core.py:1", lines[1]["result"]["content"][0]["text"])
 
 
 class TestCLI(FixtureRepoMixin, unittest.TestCase):

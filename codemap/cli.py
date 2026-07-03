@@ -157,6 +157,11 @@ def cmd_refs(args) -> int:
     return 0
 
 
+def cmd_mcp(args) -> int:
+    from codemap.mcp_server import serve
+    return serve(_root(args))
+
+
 def cmd_stats(args) -> int:
     root = _root(args)
     store = _open(root, auto_index=False)
@@ -218,6 +223,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
+
+    sp = sub.add_parser("mcp", help="run MCP stdio server (tools: map, search, "
+                                    "outline, defs, refs)")
+    sp.set_defaults(fn=cmd_mcp)
 
     args = p.parse_args(argv)
     return args.fn(args)

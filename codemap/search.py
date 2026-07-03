@@ -107,18 +107,47 @@ def _rrf(ranked_lists: list[list[Hit]], limit: int) -> list[Hit]:
     return result[:limit]
 
 
+TEST_PATH_DEMOTION = 0.6
+
+
+def _is_test_path(path: str) -> bool:
+    parts = path.lower().split("/")
+    return any(p in ("tests", "test", "__tests__", "spec") for p in parts[:-1]) \
+        or parts[-1].startswith("test_") or parts[-1].endswith("_test.py")
+
+
+def _polish(hits: list[Hit], limit: int) -> list[Hit]:
+    """Demote test files and collapse duplicate (name, kind, signature) hits —
+    N identical mocks must not crowd out distinct results."""
+    for h in hits:
+        if _is_test_path(h.symbol.path):
+            h.score *= TEST_PATH_DEMOTION
+    hits.sort(key=lambda h: h.score, reverse=True)
+    seen: set[tuple[str, str, str]] = set()
+    result = []
+    for h in hits:
+        key = (h.symbol.name, h.symbol.kind, h.symbol.signature)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(h)
+        if len(result) == limit:
+            break
+    return result
+
+
 def search(store: Store, query: str, limit: int = 10, mode: str = "auto") -> list[Hit]:
     """mode: auto | hybrid | bm25 | vector. `auto` = hybrid when vectors exist."""
     if mode == "auto":
         mode = "hybrid" if (embed.available() and store.vector_count() > 0) else "bm25"
     if mode == "bm25":
-        return search_bm25(store, query, limit)
-    if mode == "vector":
-        return search_vector(store, query, limit)
-    if mode == "hybrid":
+        hits = search_bm25(store, query, CANDIDATE_POOL)
+    elif mode == "vector":
+        hits = search_vector(store, query, CANDIDATE_POOL)
+    elif mode == "hybrid":
         bm25_hits = search_bm25(store, query, CANDIDATE_POOL)
         vec_hits = search_vector(store, query, CANDIDATE_POOL)
-        if not vec_hits:
-            return bm25_hits[:limit]
-        return _rrf([bm25_hits, vec_hits], limit)
-    raise ValueError(f"unknown search mode: {mode}")
+        hits = _rrf([bm25_hits, vec_hits], CANDIDATE_POOL) if vec_hits else bm25_hits
+    else:
+        raise ValueError(f"unknown search mode: {mode}")
+    return _polish(hits, limit)

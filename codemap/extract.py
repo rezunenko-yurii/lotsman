@@ -96,6 +96,8 @@ DEF_QUERIES: dict[str, str] = {
         (interface_declaration name: (identifier) @def.class)
         (struct_declaration name: (identifier) @def.type)
         (method_declaration name: (identifier) @def.method)
+        (property_declaration name: (identifier) @def.method)
+        (constructor_declaration name: (identifier) @def.method)
         (enum_declaration name: (identifier) @def.type)
     """,
     "php": """
@@ -164,6 +166,17 @@ REF_QUERIES: dict[str, str] = {
     "ruby": """
         (call method: (identifier) @ref)
         (constant) @ref
+    """,
+    "csharp": """
+        (invocation_expression function: (identifier) @ref)
+        (invocation_expression function: (member_access_expression name: (identifier) @ref))
+        (object_creation_expression type: (identifier) @ref)
+        (object_creation_expression type: (generic_name (identifier) @ref))
+        (base_list (identifier) @ref)
+        (attribute name: (identifier) @ref)
+        (generic_name (identifier) @ref)
+        (variable_declaration type: (identifier) @ref)
+        (parameter type: (identifier) @ref)
     """,
 }
 REF_QUERIES["tsx"] = REF_QUERIES["typescript"]
@@ -265,7 +278,8 @@ _DEF_NODE_TYPES = frozenset({
     "enum_declaration", "variable_declarator", "type_declaration", "type_spec",
     "function_item", "struct_item", "enum_item", "trait_item", "mod_item",
     "struct_specifier", "enum_specifier", "class_specifier", "type_definition",
-    "struct_declaration", "method", "class", "module",
+    "struct_declaration", "property_declaration", "constructor_declaration",
+    "method", "class", "module",
 })
 
 

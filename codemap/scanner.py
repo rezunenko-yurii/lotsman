@@ -46,6 +46,36 @@ SKIP_DIRS = frozenset({
 
 MAX_FILE_SIZE = 1_000_000  # skip generated/bundled monsters
 
+IGNORE_FILE = ".codemapignore"
+
+
+def load_ignore_patterns(root: Path) -> list[str]:
+    """gitignore-lite: one glob per line, `#` comments, `dir/` matches the whole
+    subtree. Patterns match posix-style paths relative to root."""
+    path = root / IGNORE_FILE
+    if not path.is_file():
+        return []
+    patterns = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def is_ignored(rel_path: str, patterns: list[str]) -> bool:
+    import fnmatch
+    for pat in patterns:
+        if pat.endswith("/"):
+            if rel_path.startswith(pat) or fnmatch.fnmatch(rel_path + "/", pat + "*"):
+                return True
+        elif fnmatch.fnmatch(rel_path, pat):
+            return True
+        elif fnmatch.fnmatch(rel_path.rsplit("/", 1)[-1], pat):
+            return True
+    return False
+
 
 @dataclass
 class FileRecord:
@@ -92,10 +122,13 @@ def scan(root: Path) -> list[FileRecord]:
     names = _git_files(root)
     if names is None:
         names = _walk_files(root)
+    ignore = load_ignore_patterns(root)
     records: list[FileRecord] = []
     for rel in names:
         parts = rel.split("/")
         if any(p in SKIP_DIRS for p in parts[:-1]):
+            continue
+        if ignore and is_ignored(rel, ignore):
             continue
         lang = LANG_BY_EXT.get(Path(rel).suffix.lower())
         if lang is None:

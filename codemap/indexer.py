@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from codemap.store import Store
 DB_RELPATH = ".codemap/index.db"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "2"
+INDEX_VERSION = "3"
 
 
 @dataclass
@@ -24,6 +25,15 @@ class IndexResult:
     unchanged: int = 0
     errors: list[str] = field(default_factory=list)
     seconds: float = 0.0
+
+
+MAX_LINE_LEN = 1000  # no human writes lines this long
+
+
+def _looks_generated(data: bytes) -> bool:
+    """Minified/bundled/generated code: symbols from it are search noise."""
+    head = data[:65536]
+    return any(len(line) > MAX_LINE_LEN for line in head.split(b"\n"))
 
 
 def open_store(root: Path) -> Store:
@@ -62,8 +72,11 @@ def index_repo(root: Path, store: Store) -> IndexResult:
             result.unchanged += 1
             continue
         try:
-            symbols = extract.extract_symbols(rec.lang, data)
-            idents = extract.extract_refs(rec.lang, data)
+            if _looks_generated(data):
+                symbols, idents = [], Counter()  # record the file, index nothing
+            else:
+                symbols = extract.extract_symbols(rec.lang, data)
+                idents = extract.extract_refs(rec.lang, data)
         except Exception as e:  # a single bad file must not kill the index run
             result.errors.append(f"{rec.path}: {e}")
             continue
@@ -82,5 +95,7 @@ def index_repo(root: Path, store: Store) -> IndexResult:
         result.removed = len(gone)
 
     store.commit()
+    if result.removed > 200:  # reclaim space after mass removals (.codemapignore edits)
+        store.conn.execute("VACUUM")
     result.seconds = time.monotonic() - t0
     return result

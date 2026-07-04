@@ -86,6 +86,30 @@ class TestExtract(unittest.TestCase):
         self.assertIn("compute_stuff", counts)
 
 
+class TestIgnoreFile(unittest.TestCase):
+    def test_patterns(self):
+        from codemap.scanner import is_ignored
+        pats = ["Plugins/", "*.gen.cs", "vendor/*.js", "# not a pattern"]
+        self.assertTrue(is_ignored("Plugins/Foo/Bar.cs", pats))
+        self.assertTrue(is_ignored("src/Models.gen.cs", pats))
+        self.assertTrue(is_ignored("vendor/lib.js", pats))
+        self.assertFalse(is_ignored("src/Plugins.cs", pats))
+        self.assertFalse(is_ignored("ExFramework/Core.cs", pats))
+
+    def test_scan_respects_ignore(self):
+        tmp = Path(tempfile.mkdtemp(prefix="codemap_ign_"))
+        try:
+            (tmp / "Plugins").mkdir()
+            (tmp / "Plugins" / "vendor.py").write_text("def v():\n    pass\n")
+            (tmp / "mine.py").write_text("def m():\n    pass\n")
+            (tmp / ".codemapignore").write_text("# vendored\nPlugins/\n")
+            from codemap import scanner
+            paths = {r.path for r in scanner.scan(tmp)}
+            self.assertEqual(paths, {"mine.py"})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestGraph(unittest.TestCase):
     def test_pagerank_favors_referenced_file(self):
         definitions = {"core_helper": {"core.py"}, "util_thing": {"util.py"}}

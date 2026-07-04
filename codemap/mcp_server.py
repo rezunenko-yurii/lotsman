@@ -222,6 +222,11 @@ class McpServer:
 
 def serve(root: Path) -> int:
     """Blocking stdio loop: one JSON message per line."""
+    import os
+    # stdout belongs to JSON-RPC exclusively; keep third-party progress bars
+    # (HF hub model download on first run) off it.
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TQDM_DISABLE", "1")
     server = McpServer(root)
     for line in sys.stdin:
         line = line.strip()

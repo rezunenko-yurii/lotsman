@@ -40,7 +40,10 @@ def open_store(root: Path) -> Store:
     return Store(root / DB_RELPATH)
 
 
-def index_repo(root: Path, store: Store) -> IndexResult:
+def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
+    """Incremental reindex. With verify=True the mtime+size fast path is
+    disabled and every file is re-hashed — catches the (rare) case of content
+    changing without touching size or timestamp."""
     t0 = time.monotonic()
     result = IndexResult()
     if store.get_meta("index_version") != INDEX_VERSION:
@@ -55,7 +58,8 @@ def index_repo(root: Path, store: Store) -> IndexResult:
         seen_paths.add(rec.path)
         prev = known.get(rec.path)
         # Fast path: mtime+size unchanged -> skip without hashing.
-        if prev is not None and prev[1] == rec.mtime and prev[2] == rec.size:
+        if (not verify and prev is not None
+                and prev[1] == rec.mtime and prev[2] == rec.size):
             result.unchanged += 1
             continue
         try:

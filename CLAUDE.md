@@ -1,25 +1,30 @@
-# Lotsman — инструкции для агента
+# Lotsman — agent instructions
 
-## Навигация по коду: используй lotsman (dogfood)
+## Code navigation: use lotsman itself (dogfood)
 
-Этот проект — сам lotsman. Перед чтением файлов используй его же:
+This project IS lotsman. Use it before reading files:
 
-1. Незнакомая область → `python3 -m lotsman map --budget 1500 --mention <идентификатор>`
-2. «Где код, отвечающий за X?» → `python3 -m lotsman search "X"` вместо серии grep
-3. «Что в файле?» → `python3 -m lotsman outline <file>`, затем читай только нужные строки
-4. «Кто использует / где определён?» → `python3 -m lotsman refs <name>` / `defs <name>`
-5. Открытые в контексте файлы передавай через `--focus`
-6. Файл целиком читается только после того, как outline/search подтвердил необходимость
+1. Unfamiliar territory → `python3 -m lotsman map --budget 1500 --mention <identifier>`
+2. "Where is the code that does X?" → `python3 -m lotsman search "X"` instead of grep chains
+3. "What's in this file?" → `python3 -m lotsman outline <file>`, then read only the range
+4. "Who uses / where defined?" → `python3 -m lotsman refs <name>` / `defs <name>`
+5. Before editing shared code → `python3 -m lotsman impact <files>`
+6. Pass files already in context via `--focus`
+7. Read a whole file only after outline/search confirmed it's needed
 
-MCP-вариант: сервер объявлен в `.mcp.json` (инструменты map/search/outline/defs/refs).
+MCP alternative: server declared in `.mcp.json` (tools map/search/outline/defs/refs/impact).
 
-## Проект
+## Project rules
 
-- Манифест и алгоритмы: `docs/MANIFEST.md`; журнал разработки: `docs/PLAN.md`
-- Тесты: `python3 -m unittest discover -s tests` (обязательны перед коммитом)
-- Зависимости: tree-sitter + tree-sitter-language-pack; model2vec опционален —
-  весь код должен деградировать без него (см. `embed.available()`)
-- Смена семантики извлечения/схемы → bump `INDEX_VERSION` в `indexer.py`
-- Изменение ранжирования → перезамер качества карты на Django
-  (клон в scratchpad; эталон: в топе `cached_property`, `ValidationError`,
-  `ForeignKey`, без generic-имён вроде `value`/`list`)
+- Design rationale: `docs/DESIGN.md`; history: `docs/DEVLOG.md`; numbers: `docs/BENCHMARKS.md`
+- Tests: `python3 -m unittest discover -s tests` — mandatory before commit
+- Dependencies: tree-sitter + tree-sitter-language-pack; model2vec is optional —
+  all code must degrade without it (see `embed.available()`)
+- Changing extraction/schema semantics → bump `INDEX_VERSION` in `indexer.py`
+- Changing ranking → re-check map quality via `benchmarks/bench_django.py`;
+  baseline: `cached_property`, `ValidationError`, `ForeignKey` at the top,
+  no generic names like `value`/`list`
+- Language support changes → keep the fixture tests (C#/TS/Go/Python) green;
+  C# guards the Unity battleground
+- Positioning: cheap local navigator, NOT a semantic code-intelligence engine.
+  `refs`/`impact` are name-based heuristics — keep the docs honest about it

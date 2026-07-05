@@ -1,156 +1,198 @@
 # Lotsman
 
-Локальный индексатор кодовой базы для ИИ-агентов: карта репозитория с
-PageRank-ранжированием, гибридный поиск по символам (BM25 + локальные
-эмбеддинги), граф ссылок, impact-анализ и MCP-сервер. Без API-ключей,
-демонов и облаков — Python + tree-sitter, индекс в одном SQLite-файле.
+> A *lotsman* (лоцман) is a maritime pilot — the person who boards a ship and
+> guides it through waters they know by heart. Lotsman does the same for AI
+> agents in large codebases.
 
-Зачем: агент на большой кодовой базе тратит основную часть токенов на
-навигацию — grep-каскады и чтение файлов целиком. Lotsman заменяет это
-запросами к предпосчитанному индексу. Замеренный эффект на реальном
-сценарии — **24× меньше токенов**; в живой сессии Claude Code агент ответил
-на impact-вопрос по проекту из 2008 C#-файлов четырьмя вызовами lotsman
-и чтением одного файла. Архитектура и алгоритмы: [docs/MANIFEST.md](docs/MANIFEST.md).
+[![CI](https://github.com/rezunenko-yurii/lotsman/actions/workflows/ci.yml/badge.svg)](https://github.com/rezunenko-yurii/lotsman/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Status: Beta](https://img.shields.io/badge/status-beta-orange)](CHANGELOG.md)
 
-Языки с точным извлечением (tree-sitter): python, javascript, typescript, tsx,
-go, rust, java, c, cpp, ruby, csharp, php; остальные — regex/лексический фоллбэк.
+Local codebase index for AI agents: a PageRank-ranked repo map, hybrid symbol
+search (BM25 + local embeddings), reference lookups, a heuristic impact map,
+and an MCP server. No API keys, no daemons, no cloud — Python + tree-sitter,
+the whole index in a single SQLite file.
 
-## Установка
+**The problem.** On a large project an agent burns most of its tokens on
+navigation: grep cascades, reading whole files for two relevant lines,
+re-finding things it already saw. **The approach:** pay once to build a local
+index, then answer "where / who uses / what breaks" questions in tens of lines
+instead of thousands.
+
+**Measured effect:** a realistic navigation scenario costs **~2.8k tokens
+instead of ~67k (24×)** — reproducible via [`benchmarks/`](benchmarks/bench_django.py).
+In a live Claude Code session on a Unity project (2008 C# files), the agent
+answered an impact question with 4 lotsman calls and a single 15-line file read.
+
+## Quick start
 
 ```bash
-pip install ".[embeddings]"   # из корня репозитория; даёт команду `lotsman`
-pip install .                 # минимум без семантического поиска (только BM25)
+pip install ".[embeddings]"     # from the repo root; installs the `lotsman` CLI
+cd /your/project
+lotsman index                   # build the index (seconds; incremental after)
+lotsman map --budget 1500       # the most important symbols, token-budgeted
 ```
 
-Модель эмбеддингов (model2vec, ~30 МБ, без torch) скачивается с HuggingFace
-при первом запуске и кешируется; без неё поиск прозрачно деградирует до BM25.
+Everything degrades gracefully: no `model2vec` → BM25-only search; no
+tree-sitter grammar for a language → regex/lexical fallback; not a git repo →
+filesystem walk. Run `lotsman doctor` to see exactly what is active.
 
-## Команды
+## What it looks like
 
-```bash
-lotsman --repo /path/to/repo index          # построить/обновить индекс (инкрементально)
-lotsman map --budget 2048                   # карта важнейших символов под токен-бюджет
-lotsman map --focus src/api.py --mention JobQueue   # персонализация под задачу
-lotsman search "retry backoff logic" -k 10  # гибридный поиск (BM25 + векторы, RRF)
-lotsman search "auth" --mode bm25           # режимы: auto | hybrid | bm25 | vector
-lotsman index --no-embed                    # индекс без эмбеддингов (только BM25)
-lotsman outline src/core/engine.py          # скелет файла: символы + строки
-lotsman defs process_payment                # где определён символ
-lotsman refs process_payment                # кто его использует (файлы + счётчики)
-lotsman impact [files...] [--since 24]      # изменённые файлы + кто от них зависит
-lotsman stats                               # статистика индекса
+`lotsman map` — the repo's skeleton, most-referenced definitions first:
+
+```
+lotsman/store.py:
+   50: class SymbolRow:
+   59: class Store:
+  125: def known_files(self) -> dict[str, tuple[str, float, int]]:
+  191: def all_symbols(self) -> list[SymbolRow]:
+  216: def symbols_named(self, name: str) -> list[SymbolRow]:
+
+lotsman/textutil.py:
+    8: def estimate_tokens(text: str) -> int:
 ```
 
-Все read-команды сами строят индекс при первом вызове. Индекс лежит в
-`.lotsman/index.db` (добавь в `.gitignore`). Повторный `index` переиндексирует
-только изменённые файлы (sha256 + mtime fast-path).
+`lotsman search "fuse rankings from multiple retrievers"` — hybrid search
+finds code by meaning, not just by name:
 
-Вендорный/сторонний код исключается файлом `.lotsmanignore` в корне репозитория
-(glob-паттерны, `dir/` = всё поддерево, `#` — комментарий) — критично для Unity
-(`Plugins/`) и монорепо с vendored SDK. Минифицированные/сгенерированные файлы
-(строки длиннее 1000 символов) отфильтровываются автоматически.
+```
+  0.02  lotsman/search.py:96   [function] def _rrf(ranked_lists: list[list[Hit]], limit: int) -> list[Hit]:
+  0.02  lotsman/indexer.py:43  [function] def index_repo(root: Path, store: Store, verify: bool = False) -> ...
+```
 
-`--json` у `search` / `outline` / `defs` / `refs` / `index` — машиночитаемый вывод.
+`lotsman refs pagerank` — who uses a symbol, before you touch it:
 
-## Замеры (Django, 2361 файл, 43.5k символов, M-серия Mac)
+```
+defined in:
+  lotsman/graph.py:74  [function] def pagerank(
+referenced by:
+  tests/test_all.py  (2x)
+  lotsman/repomap.py  (1x)
+```
 
-| Операция | Время |
+## Commands
+
+| Command | Answers |
 |---|---|
-| Полная индексация | ~4.6 с |
-| Эмбеддинг всех 43.5k символов | ~1.7 с |
-| Повторная индексация (без изменений) | ~0.13 с |
-| Повторная (1 файл изменён) | ~0.24 с |
-| `map` (холодный / из кэша рангов) | ~1.3 с / **0.11 с** |
-| `search` (hybrid) | ~0.6 с |
-| `outline` / `defs` / `refs` | ~0.05 с |
+| `lotsman index [--verify] [--no-embed]` | build/update the index (incremental; `--verify` re-hashes everything) |
+| `lotsman map [--budget N] [--focus F] [--mention I]` | "how is this project structured; what matters?" |
+| `lotsman search "query" [--mode auto\|hybrid\|bm25\|vector]` | "where is the code that does X?" |
+| `lotsman outline FILE` | "what's inside this file?" — without reading it |
+| `lotsman defs NAME` / `lotsman refs NAME` | "where is it defined / who uses it?" |
+| `lotsman impact [FILES...] [--since H]` | "what changed and what depends on it?" (heuristic) |
+| `lotsman doctor` | "what's active, what degraded, is the index fresh?" |
+| `lotsman stats` / `lotsman mcp` | index statistics / MCP stdio server |
 
-Сценарий «понять, как Django валидирует уникальность полей» (search → refs →
-outline → чтение среза в 140 строк): **~2.9k токенов против ~70k** при чтении
-трёх релевантных файлов целиком — экономия 24×.
+`--json` on `search` / `outline` / `defs` / `refs` / `index` gives
+machine-readable output. The index lives in `.lotsman/index.db` (gitignore it).
 
-## MCP-сервер
+Vendored/third-party code is excluded via a `.lotsmanignore` file in the repo
+root (gitignore-lite globs; `dir/` matches the subtree) — essential for Unity
+(`Plugins/`) and monorepos with vendored SDKs. Minified/generated files (lines
+over 1000 chars) are filtered automatically.
 
-Агент может вызывать lotsman как типизированные инструменты вместо shell-команд:
+Languages with precise tree-sitter extraction: python, javascript, typescript,
+tsx, go, rust, java, c, cpp, ruby, csharp, php; anything else falls back to
+regex/lexical heuristics.
 
-```bash
-lotsman --repo /path/to/repo mcp   # stdio-сервер: map / search / outline / defs / refs
+## Hooking it up to an agent
+
+Three integration levels, from lightest to deepest:
+
+**1. CLAUDE.md policy** — teach the agent to prefer the index over reading:
+
+```markdown
+## Code navigation: lotsman
+
+Use `lotsman` before reading files (cheaper and faster than reading):
+1. New task in unfamiliar territory -> `lotsman map --budget 1500 --mention <identifier>`
+2. "Where is the code that does X?"  -> `lotsman search "X"` instead of grep chains
+3. "What's in this file?"            -> `lotsman outline <file>`, then read only the range
+4. "Who uses / where is it defined?" -> `lotsman refs <name>` / `lotsman defs <name>`
+5. Before editing shared code        -> `lotsman impact <files>`
+6. Read a whole file only after outline/search confirmed it's the right one.
 ```
 
-Подключение к Claude Code — `.mcp.json` в корне проекта (пример в этом репо):
+**2. MCP server** — typed tools instead of shell commands. `.mcp.json`:
 
 ```json
-{"mcpServers": {"lotsman": {"command": "python3",
-  "args": ["-m", "lotsman", "--repo", ".", "mcp"],
-  "env": {"PYTHONPATH": "/path/to/lotsman"}}}}
+{"mcpServers": {"lotsman": {
+  "command": "lotsman", "args": ["--repo", ".", "mcp"]}}}
 ```
 
-Сервер сам поддерживает индекс свежим (инкрементальный реиндекс не чаще раза
-в 10 с), реализован на stdlib — без SDK-зависимостей.
+The server keeps the index fresh itself (throttled incremental reindex) and is
+implemented on the stdlib — verified against Claude Code 2.1.150.
 
-## Автоинъекция карты (SessionStart-хук)
-
-Чтобы агент получал карту проекта в контекст при старте сессии автоматически —
-`.claude/settings.json` проекта:
+**3. Session-start map injection** — the agent starts every session already
+holding the map. `.claude/settings.json`:
 
 ```json
 {"hooks": {"SessionStart": [{"matcher": "startup|clear", "hooks": [{
   "type": "command",
-  "command": "echo '## Repo map (lotsman):'; lotsman --repo . map --budget 1200 2>/dev/null"
+  "command": "echo '## Repo map (lotsman):'; lotsman map --budget 1200 2>/dev/null"
 }]}]}}
 ```
 
-С тёплым кэшем рангов хук отрабатывает за ~0.1–0.3 с и не тормозит старт.
+With a warm rank cache the hook costs ~0.1–0.3 s.
 
-## Политика использования для агента
+## How it works
 
-Сниппет для `CLAUDE.md` / `AGENTS.md` проекта:
-
-```markdown
-## Навигация по коду: lotsman
-
-Перед чтением файлов используй `lotsman` (дешевле и быстрее чтения):
-
-1. Новая задача в незнакомой области → `lotsman map --budget 1500
-   --mention <ключевой-идентификатор>` — скелет релевантной части проекта.
-2. «Где код, отвечающий за X?» → `lotsman search "X"` вместо серии grep.
-3. «Что в этом файле?» → `lotsman outline <file>` вместо чтения целиком;
-   затем читай только нужный диапазон строк.
-4. «Кто использует / где определено?» → `lotsman refs <name>` / `lotsman defs <name>`.
-5. Файлы, уже открытые в контексте, передавай через `--focus` — карта
-   покажет их зависимости, не дублируя сами файлы.
-6. Правило: читать файл целиком можно только после того, как outline/search
-   указал, что он действительно нужен.
+```mermaid
+flowchart LR
+    A["scan<br/>git ls-files / walk<br/>+ .lotsmanignore"] --> B["extract<br/>tree-sitter defs & refs<br/>regex fallback"]
+    B --> C[("SQLite<br/>files / symbols / refs<br/>+ vectors")]
+    C --> D["rank<br/>reference graph<br/>personalized PageRank"]
+    C --> E["search<br/>BM25 + embeddings<br/>RRF fusion"]
+    D --> F["map / impact"]
+    E --> G["search / defs / refs / outline"]
+    F --> H["CLI & MCP"]
+    G --> H
 ```
 
-## Как это работает
+1. **Scan** — `git ls-files` when available, filesystem walk otherwise;
+   language detection, size/vendor/generated filters.
+2. **Extract** — tree-sitter queries for definitions (12 languages) and
+   *use-site* references — calls, instantiations, inheritance, attributes,
+   type usages (11 languages). A parameter named `request` is not a reference
+   to a `request()` method.
+3. **Store** — SQLite with incremental upsert (sha256 + mtime fast path;
+   `--verify` re-hashes everything). Index-format changes trigger an automatic
+   full rebuild.
+4. **Rank** — a file→file reference graph weighted by
+   `boost(name) × IDF(name) × √count / definers`; names referenced by >25% of
+   files are dropped as ambient vocabulary. Personalized PageRank distributes
+   file rank down to individual definitions; results are cached per index state.
+5. **Map** — greedy selection of top-ranked definitions under a token budget.
+6. **Search** — Okapi BM25 over symbol documents (name subtokens + signature +
+   path) fused with cosine similarity over local static embeddings
+   ([model2vec](https://github.com/MinishLab/model2vec), no torch) via
+   Reciprocal Rank Fusion; test paths demoted, duplicate signatures collapsed.
 
-1. **Скан**: `git ls-files` (или walk) → фильтр по языкам/размеру.
-2. **Извлечение**: tree-sitter запросы определений (12 языков: python, js, ts,
-   tsx, go, rust, java, c, cpp, ruby, csharp, php; regex-fallback для остальных).
-   Ссылки — тоже через tree-sitter (только вызовы, инстанцирования, использования
-   типов, декораторы, импорты — 10 языков); параметр `request` больше не считается
-   ссылкой на метод `request()`. Лексический подсчёт — фоллбэк.
-3. **Хранение**: SQLite (`files` / `symbols` / `idents` + векторы BLOB),
-   инкрементальный upsert; смена версии алгоритма индексации → автоматический
-   полный реиндекс.
-4. **Ранжирование**: граф «файл → файл, определяющий употреблённое имя»;
-   вес ребра = boost(имя) × IDF(имя) × √(число употреблений) / число определений;
-   имена, встречающиеся в >25% файлов, отбрасываются как фоновая лексика.
-   Персонализированный PageRank (power iteration); ранг файла распределяется
-   по его определениям.
-5. **Карта**: жадный отбор определений по рангу до исчерпания токен-бюджета.
-6. **Поиск**: Okapi BM25 по документам-символам (имя + подтокены camelCase/snake_case
-   + сигнатура + путь) с бустом точного имени **+** косинусная близость по локальным
-   статическим эмбеддингам (model2vec potion-base-8M, 256-мерные, без torch и
-   API-ключей). Слияние рангов — Reciprocal Rank Fusion (k=60). Без model2vec —
-   прозрачная деградация до BM25.
+Design rationale and the cost model: [docs/DESIGN.md](docs/DESIGN.md).
+Numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-## Ограничения
+## Honest limitations
 
-- Ссылки вида `obj.method()` сопоставляются определениям по имени без разрешения
-  типов: одноимённые методы разных классов склеиваются. IDF-штраф, порог фоновой
-  лексики (25% файлов) и стоп-слова builtin-методов гасят основной шум.
-- Для php ссылки считаются лексически (нет ref-запроса) — точность ниже.
-- Статические эмбеддинги ловят близкую лексику и словоформы, но не глубокие
-  парафразы; при необходимости провайдер меняется через `LOTSMAN_EMBED_MODEL`.
-- Один репозиторий = один индекс; кросс-репозиторных ссылок нет.
+- **`refs`/`impact` are heuristic, not compiler-grade.** `obj.method()` is
+  matched to definitions by name, without type resolution — same-named methods
+  of different classes blur together. IDF weighting, the ambient-vocabulary
+  cutoff and builtin stopwords absorb most of the noise, but treat `impact`
+  as a navigation aid, not a verified dependency graph. For php, references
+  are lexical (no ref query yet).
+- **Static embeddings** catch related vocabulary and word forms, not deep
+  paraphrases. Swap the model via `LOTSMAN_EMBED_MODEL`.
+- **One repo = one index.** No cross-repository references.
+- The mtime+size fast path can theoretically miss a change that preserves both
+  timestamp and size — `lotsman index --verify` exists precisely for that.
+
+## Development
+
+```bash
+python -m unittest discover -s tests   # 47 tests, no test-only deps
+python benchmarks/bench_django.py      # reproducible perf + token numbers
+lotsman doctor                         # environment health
+```
+
+License: [MIT](LICENSE). Changes: [CHANGELOG.md](CHANGELOG.md).

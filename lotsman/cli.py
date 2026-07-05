@@ -36,7 +36,7 @@ def _open(root: Path, auto_index: bool = True) -> Store:
 def cmd_index(args) -> int:
     root = _root(args)
     store = indexer.open_store(root)
-    res = indexer.index_repo(root, store)
+    res = indexer.index_repo(root, store, verify=args.verify)
     embedded = 0
     if not args.no_embed:
         t0 = time.monotonic()
@@ -173,6 +173,11 @@ def cmd_impact(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    from lotsman.doctor import run_doctor
+    return run_doctor(_root(args))
+
+
 def cmd_mcp(args) -> int:
     from lotsman.mcp_server import serve
     return serve(_root(args))
@@ -199,6 +204,9 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--no-embed", action="store_true",
                     help="skip embedding pass (search degrades to BM25)")
+    sp.add_argument("--verify", action="store_true",
+                    help="re-hash every file, bypassing the mtime+size fast "
+                         "path (catches stale-index edge cases)")
     sp.set_defaults(fn=cmd_index)
 
     sp = sub.add_parser("map", help="token-budgeted map of the most important symbols")
@@ -239,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
+
+    sp = sub.add_parser("doctor", help="environment and index health check")
+    sp.set_defaults(fn=cmd_doctor)
 
     sp = sub.add_parser("impact", help="changed files + who depends on them")
     sp.add_argument("files", nargs="*",

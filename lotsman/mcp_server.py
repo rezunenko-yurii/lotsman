@@ -80,10 +80,12 @@ TOOLS = [
     {
         "name": "impact",
         "description": (
-            "Impact analysis: given changed files (or auto-detected recent "
-            "changes), show their symbols and every file that depends on them, "
-            "ranked by usage. Call BEFORE editing a shared file and AFTER a "
-            "batch of edits to know what to re-check."),
+            "Heuristic impact map: given changed files (or auto-detected recent "
+            "changes), show their symbols and the files that reference those "
+            "symbols by name, ranked by usage. Name-based matching without type "
+            "resolution — a navigation aid, not a compiler-grade dependency "
+            "graph. Call BEFORE editing a shared file and AFTER a batch of "
+            "edits to know what to re-check."),
         "inputSchema": {
             "type": "object",
             "properties": {

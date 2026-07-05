@@ -86,6 +86,97 @@ class TestExtract(unittest.TestCase):
         self.assertIn("compute_stuff", counts)
 
 
+class TestExtractCSharp(unittest.TestCase):
+    """Regression fixtures for the Unity battleground: C# must stay precise."""
+
+    SRC = (b"public class GameManager : MonoBehaviour {\n"
+           b"    [SerializeField] private HealthBar healthBar;\n"
+           b"    public int Score { get; set; }\n"
+           b"    public GameManager(Config config) { }\n"
+           b"    void Start() {\n"
+           b"        var spawner = new EnemySpawner();\n"
+           b"        spawner.SpawnWave(3);\n"
+           b"        Utils.Log(\"EnemySpawner inside a string\");\n"
+           b"    }\n"
+           b"}\n"
+           b"public interface IDamageable { }\n"
+           b"public enum GamePhase { Menu, Play }\n")
+
+    def test_symbols(self):
+        syms = {(s.name, s.kind, s.line) for s in
+                extract.extract_symbols("csharp", self.SRC)}
+        self.assertIn(("GameManager", "class", 1), syms)      # class
+        self.assertIn(("Score", "method", 3), syms)           # property
+        self.assertIn(("GameManager", "method", 4), syms)     # constructor
+        self.assertIn(("Start", "method", 5), syms)
+        self.assertIn(("IDamageable", "class", 11), syms)
+        self.assertIn(("GamePhase", "type", 12), syms)
+
+    def test_refs_precise(self):
+        counts = extract.extract_refs("csharp", self.SRC)
+        self.assertEqual(counts["MonoBehaviour"], 1)   # inheritance
+        self.assertEqual(counts["SerializeField"], 1)  # attribute
+        self.assertEqual(counts["EnemySpawner"], 1)    # `new`, not the string
+        self.assertEqual(counts["SpawnWave"], 1)       # method call
+        self.assertEqual(counts["HealthBar"], 1)       # field type
+        self.assertEqual(counts["Config"], 1)          # parameter type
+        self.assertNotIn("healthBar", counts)          # field name is not a ref
+        self.assertNotIn("spawner", counts)            # local var is not a ref
+
+
+class TestExtractTypeScript(unittest.TestCase):
+    SRC = (b"import { fetchUser } from './api';\n"
+           b"export interface UserProfile { id: number; }\n"
+           b"type ProfileMap = Record<string, UserProfile>;\n"
+           b"export class ProfileStore {\n"
+           b"    private cache: ProfileMap = {};\n"
+           b"    async loadProfile(id: number): Promise<UserProfile> {\n"
+           b"        return fetchUser(id);\n"
+           b"    }\n"
+           b"}\n"
+           b"const renderCard = (p: UserProfile) => p.id;\n")
+
+    def test_symbols(self):
+        syms = {(s.name, s.kind) for s in
+                extract.extract_symbols("typescript", self.SRC)}
+        self.assertIn(("UserProfile", "type"), syms)   # interface
+        self.assertIn(("ProfileMap", "type"), syms)    # type alias
+        self.assertIn(("ProfileStore", "class"), syms)
+        self.assertIn(("loadProfile", "method"), syms)
+        self.assertIn(("renderCard", "function"), syms)  # arrow function const
+
+    def test_refs(self):
+        counts = extract.extract_refs("typescript", self.SRC)
+        self.assertGreaterEqual(counts["fetchUser"], 2)   # import + call
+        self.assertGreaterEqual(counts["UserProfile"], 2)  # type usages
+        self.assertNotIn("cache", counts)  # field name is not a ref
+
+
+class TestExtractGo(unittest.TestCase):
+    SRC = (b"package engine\n"
+           b"type Engine struct{ fuel int }\n"
+           b"type Starter interface{ Start() }\n"
+           b"func NewEngine() *Engine { return &Engine{} }\n"
+           b"func (e *Engine) Start() {\n"
+           b"    prepareFuel(e)\n"
+           b"}\n"
+           b"func prepareFuel(e *Engine) {}\n")
+
+    def test_symbols(self):
+        syms = {(s.name, s.kind) for s in extract.extract_symbols("go", self.SRC)}
+        self.assertIn(("Engine", "type"), syms)
+        self.assertIn(("Starter", "type"), syms)
+        self.assertIn(("NewEngine", "function"), syms)
+        self.assertIn(("Start", "method"), syms)
+        self.assertIn(("prepareFuel", "function"), syms)
+
+    def test_refs(self):
+        counts = extract.extract_refs("go", self.SRC)
+        self.assertIn("prepareFuel", counts)   # call
+        self.assertIn("Engine", counts)        # type usages
+        self.assertNotIn("fuel", counts)       # struct field is not a ref
+
+
 class TestIgnoreFile(unittest.TestCase):
     def test_patterns(self):
         from lotsman.scanner import is_ignored
@@ -196,6 +287,23 @@ class TestEndToEnd(FixtureRepoMixin, unittest.TestCase):
         names = {s.name for s in self.store.all_symbols()}
         self.assertIn("new_func", names)
         self.assertNotIn("Engine", names)
+
+    def test_verify_catches_same_mtime_same_size_change(self):
+        import os
+        target = self.tmp / "pkg" / "core.py"
+        st = target.stat()
+        old = target.read_text()
+        # Same byte length, different content; restore the original timestamp.
+        target.write_text(old.replace("prepare_fuel", "prepare_fuex"))
+        os.utime(target, ns=(st.st_atime_ns, st.st_mtime_ns))
+        assert target.stat().st_size == st.st_size
+
+        res = indexer.index_repo(self.tmp, self.store)
+        self.assertEqual(res.updated, 0)  # fast path is fooled — documented risk
+        res = indexer.index_repo(self.tmp, self.store, verify=True)
+        self.assertEqual(res.updated, 1)  # --verify catches it
+        names = {s.name for s in self.store.all_symbols()}
+        self.assertIn("prepare_fuex", names)
 
     def test_repo_map_ranks_core(self):
         out = repomap.generate_map(self.store, budget=512)
@@ -403,6 +511,31 @@ class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
         self.assertEqual(len(lines), 2)  # notification gets no response
         self.assertEqual(lines[0]["id"], 1)
         self.assertIn("pkg/core.py:1", lines[1]["result"]["content"][0]["text"])
+
+
+class TestDoctor(FixtureRepoMixin, unittest.TestCase):
+    def test_doctor_runs_and_reports(self):
+        import contextlib, io
+        from lotsman.doctor import run_doctor
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = run_doctor(self.tmp)
+        out = buf.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("languages", out)
+        self.assertIn("python       defs: tree-sitter", out)
+        self.assertIn("index", out)
+        self.assertIn("index is fresh", out)
+        self.assertIn("change detection", out)
+
+    def test_doctor_flags_stale_index(self):
+        import contextlib, io
+        from lotsman.doctor import run_doctor
+        (self.tmp / "newfile.py").write_text("def brand_new():\n    pass\n")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            run_doctor(self.tmp)
+        self.assertIn("stale: 1 changed/new", buf.getvalue())
 
 
 class TestCLI(FixtureRepoMixin, unittest.TestCase):

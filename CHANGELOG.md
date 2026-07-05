@@ -1,42 +1,64 @@
 # Changelog
 
+## 1.1.0 — 2026-07-05
+
+Trust hardening after external review, English docs, visual polish.
+
+- **Honest maturity**: classifier lowered to `4 - Beta`; `impact` is now
+  described everywhere as a *heuristic* impact map (name-based matching, no
+  type resolution) — a navigation aid, not a compiler-grade dependency graph.
+- **`lotsman index --verify`**: full re-hash pass bypassing the mtime+size
+  fast path; catches content changes that preserve both timestamp and size.
+- **`lotsman doctor`**: environment and index health check — per-language
+  grammar status (tree-sitter vs fallback), embeddings availability, index
+  freshness and version, rank-cache state, ignore rules, change-detection mode.
+- **Reproducible benchmarks**: `benchmarks/bench_django.py` (Django pinned at
+  tag 5.2) reproduces every performance number and the 24× token-savings
+  scenario; results and methodology in `docs/BENCHMARKS.md`.
+- **Language regression fixtures**: C# (Unity idioms: properties, constructors,
+  attributes, inheritance), TypeScript and Go extraction tests for both
+  definitions and use-site references (47 tests total).
+- **Docs in English**: README redesigned (badges, mermaid pipeline diagram,
+  real command outputs, honest-limitations section); design rationale moved to
+  `docs/DESIGN.md`, development history to `docs/DEVLOG.md`.
+
 ## 1.0.0 — 2026-07-05
 
-Первый упакованный релиз. Система верифицирована end-to-end: живая сессия
-Claude Code на Unity-проекте (2008 C#-файлов) ответила на impact-вопрос
-четырьмя вызовами lotsman и чтением одного файла.
+First packaged release (as `codemap`; renamed to `lotsman` the same day —
+the codemap namespace was taken on both PyPI and GitHub). Verified end-to-end:
+a live Claude Code session on a Unity project (2008 C# files) answered an
+impact question with 4 tool calls and a single 15-line file read.
 
-### Индексация
-- Инкрементальный SQLite-индекс (sha256 + mtime fast-path); полный проход
-  Django (2361 файл) ~4 с, повторный — 0.13 с
-- Извлечение определений через tree-sitter для 12 языков (python, js, ts, tsx,
-  go, rust, java, c, cpp, ruby, csharp, php) + regex-фоллбэк
-- Точные ссылки (вызовы, наследование, атрибуты, типы) для 11 языков,
-  лексический фоллбэк для остальных
-- `.lotsmanignore` (gitignore-lite) для вендорного кода; автофильтр
-  минифицированных/сгенерированных файлов; версионирование индекса
-  с автоматическим полным реиндексом
+### Indexing
+- Incremental SQLite index (sha256 + mtime fast path); Django (2361 files)
+  cold ~4 s, no-op ~0.13 s.
+- Definitions via tree-sitter for 12 languages (python, js, ts, tsx, go, rust,
+  java, c, cpp, ruby, csharp, php) + regex fallback.
+- Use-site references (calls, inheritance, attributes, types) for 11
+  languages; lexical fallback elsewhere.
+- `.lotsmanignore` (gitignore-lite) for vendored code; automatic
+  minified/generated-file filter; index versioning with automatic full rebuild.
 
-### Ранжирование и карта
-- Граф ссылок с IDF-взвешиванием и отсечкой фоновой лексики;
-  персонализированный PageRank (power iteration, без зависимостей)
-- Карта репозитория под токен-бюджет; персонализация `--focus` / `--mention`
-- Кэш рангов по слепку состояния индекса: тёплая карта ~0.1 с
+### Ranking and map
+- Reference graph with IDF weighting and ambient-vocabulary cutoff;
+  personalized PageRank (dependency-free power iteration).
+- Token-budgeted repo map; `--focus` / `--mention` personalization.
+- Rank cache keyed by index-state digest: warm map ~0.1 s.
 
-### Поиск
-- BM25 по символам с разбиением camelCase/snake_case
-- Локальные эмбеддинги model2vec (опционально, без torch и API-ключей)
-- Гибридный режим через Reciprocal Rank Fusion; дедупликация сигнатур,
-  демоция тестовых путей; graceful-деградация до BM25
+### Search
+- BM25 over symbols with camelCase/snake_case subtokenization.
+- Optional local embeddings (model2vec, no torch, no API keys).
+- Hybrid mode via Reciprocal Rank Fusion; signature dedupe, test-path
+  demotion; graceful BM25-only degradation.
 
-### Impact-анализ
-- `lotsman impact`: изменённые файлы + зависимые, ранжированные по
-  использованию; детект изменений: явный список / git status / mtime-окно
+### Impact
+- `lotsman impact`: changed files + dependents ranked by usage; change
+  detection: explicit list / git status / mtime window.
 
-### Интеграция с агентами
-- MCP stdio-сервер на stdlib (map / search / outline / defs / refs / impact),
-  проверен против Claude Code 2.1.150
-- Политика навигации для CLAUDE.md; SessionStart-хук автоинъекции карты
-- `--json` вывод для машинного потребления
+### Agent integration
+- MCP stdio server on the stdlib (map / search / outline / defs / refs /
+  impact), verified against Claude Code 2.1.150.
+- CLAUDE.md navigation policy; SessionStart map-injection hook; `--json`
+  output for machine consumption.
 
-Замеренный эффект: агентский сценарий навигации — ~2.9k токенов вместо ~70k (24×).
+Measured effect: agent navigation scenario ~2.8k tokens instead of ~67k (24×).

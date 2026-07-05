@@ -47,39 +47,185 @@ Everything degrades gracefully: no `model2vec` → BM25-only search; no
 tree-sitter grammar for a language → regex/lexical fallback; not a git repo →
 filesystem walk. Run `lotsman doctor` to see exactly what is active.
 
-## What it looks like
+## Showcase: five minutes in an unfamiliar codebase
 
-`lotsman map` — the repo's skeleton, most-referenced definitions first:
+The corpus below is **Django 5.2 — 2272 files, ~41k symbols**. Every output is
+real (reproduce any of it: `git clone --depth 1 --branch 5.2
+https://github.com/django/django && cd django && lotsman init`). The premise:
+you (or your agent) have never seen this codebase and need to work in it.
 
-```
-lotsman/store.py:
-   50: class SymbolRow:
-   59: class Store:
-  125: def known_files(self) -> dict[str, tuple[str, float, int]]:
-  191: def all_symbols(self) -> list[SymbolRow]:
-  216: def symbols_named(self, name: str) -> list[SymbolRow]:
-
-lotsman/textutil.py:
-    8: def estimate_tokens(text: str) -> int:
-```
-
-`lotsman search "fuse rankings from multiple retrievers"` — hybrid search
-finds code by meaning, not just by name:
+### Step 0 — one command to onboard
 
 ```
-  0.02  lotsman/search.py:96   [function] def _rrf(ranked_lists: list[list[Hit]], limit: int) -> list[Hit]:
-  0.02  lotsman/indexer.py:43  [function] def index_repo(root: Path, store: Store, verify: bool = False) -> ...
+$ lotsman init --agent claude
+[init] policy in AGENTS.md: created
+[init] created .lotsmanignore skeleton (edit it to exclude vendored code)
+[init] added .lotsman/ to .gitignore
+[init] claude: registered MCP server in .mcp.json
+[init] indexed 2272 files (40838 symbols embedded), rank cache warmed
+[init] done — try: lotsman map --budget 1500
 ```
 
-`lotsman refs pagerank` — who uses a symbol, before you touch it:
+Indexing 2272 files takes ~4 s once; every later reindex touches only changed
+files (~0.1 s). From here on, every command below answers in **under 0.2 s**.
+
+### Step 1 — get your bearings: `lotsman map`
 
 ```
+$ lotsman map --budget 380
+django/utils/functional.py:
+    7: class cached_property:
+   68: class Promise:
+  211: def keep_lazy(*resultclasses):
+
+django/core/exceptions.py:
+  119: class ImproperlyConfigured(Exception):
+  134: class ValidationError(Exception):
+
+django/db/models/sql/query.py:
+  159: def chain(self, using):
+
+django/test/testcases.py:
+  204: class SimpleTestCase(unittest.TestCase):
+ 1362: class TestCase(TransactionTestCase):
+```
+
+This is not a directory listing — it's PageRank over the *reference graph*:
+the definitions the rest of the codebase actually leans on. Ten seconds of
+reading tells you Django's load-bearing walls are lazy evaluation
+(`cached_property`, `Promise`), a central exception pair, the SQL query
+builder, and the test base classes. A human needs days to build this intuition;
+reading files to reproduce it would cost tens of thousands of tokens.
+
+### Step 2 — make the map about *your task*: `--mention`
+
+Task: "something about validation errors." Bias the ranking:
+
+```
+$ lotsman map --budget 220 --mention ValidationError
+django/utils/hashable.py:
+    4: def make_hashable(value):
+
+django/core/exceptions.py:
+  119: class ImproperlyConfigured(Exception):
+  134: class ValidationError(Exception):
+```
+
+The whole graph re-ranks around the identifier you care about (`--focus
+some/file.py` does the same for files already in context — the map shows their
+*dependencies* instead of repeating them). This flag is the difference between
+"a map of the project" and "a map of my problem".
+
+### Step 3 — find code by meaning: `lotsman search`
+
+```
+$ lotsman search "validate unique fields model" -k 4
+  0.03  django/db/models/fields/__init__.py:798  [function] def validate(self, value, model_instance):
+  0.03  django/forms/fields.py:185   [function] def validate(self, value):
+  0.03  django/forms/models.py:803   [function] def validate_unique(self):
+  0.02  django/db/models/base.py:1394 [function] def validate_unique(self, exclude=None):
+```
+
+Hybrid BM25 + embedding search over *symbols* (not raw text): it lands on
+definitions with `path:line`, ready to open at the exact spot — instead of a
+grep that returns 400 matching lines across tests and docs.
+
+### Step 4 — look inside without reading: `lotsman outline`
+
+```
+$ lotsman outline django/core/paginator.py
+django/core/paginator.py:
+   15-16    [class] class InvalidPage(Exception):
+   27-178   [class] class Paginator:
+   37-54    [function] def __init__(
+   60-72    [function] def validate_number(self, number):
+   74-85    [function] def get_page(self, number):
+  106-111   [function] def count(self):
+  114-119   [function] def num_pages(self):
+```
+
+The file's skeleton with line ranges. You (or the agent) now read *lines
+60–85*, not the whole file. This single habit is where most of the token
+savings comes from.
+
+### Step 5 — who depends on this: `lotsman refs`
+
+```
+$ lotsman refs cached_property
 defined in:
-  lotsman/graph.py:74  [function] def pagerank(
-referenced by:
-  tests/test_all.py  (2x)
-  lotsman/repomap.py  (1x)
+  django/utils/functional.py:7  [class] class cached_property:
+referenced by (name-based matching, no type resolution):
+  django/db/backends/mysql/features.py  (29x)
+  django/db/models/options.py  (22x)
+  django/db/models/expressions.py  (12x)
 ```
+
+Usage ranked by intensity, with the honesty label in the output itself.
+
+### Step 6 — before you change anything: `lotsman impact`
+
+```
+$ lotsman impact django/core/paginator.py
+note: heuristic, name-based matching (no type resolution) — may miss
+reflection/DI/codegen and type-resolved usages
+Changed files (1):
+
+django/core/paginator.py:
+   27: class Paginator:                        <- used by others 40x
+   60: def validate_number(self, number):      <- used by others 10x
+   87: def page(self, number):                 <- used by others 11x
+
+Impacted files (249):
+  tests/pagination/tests.py — uses Paginator (30x), validate_number (10x), page (8x)
+  ...
+```
+
+One command turns "I'll rename this method" into "this method has 249
+candidate dependents, starting with these" — *before* the tests break, not
+after. Without arguments, `impact` auto-detects recent changes (git status, or
+an mtime window on non-git repos like Plastic SCM).
+
+### Step 7 — trust, but verify: `lotsman doctor`
+
+```
+$ lotsman doctor
+[+] languages (ok)
+    csharp       defs: tree-sitter      refs: tree-sitter
+    python       defs: tree-sitter      refs: tree-sitter
+[+] embeddings (ok)
+    model loaded, 256 dimensions
+[!] index (warn)
+    stale: 5 changed/new since last index — run `lotsman index`
+```
+
+Every silent degradation made loud. `--json --fail-on-warn` turns this into a
+CI/agent gate.
+
+### What this replaces
+
+| Question | Without lotsman | With lotsman |
+|---|---|---|
+| "How is this project structured?" | hours of reading, ~10⁴–10⁵ tokens | `map`, 0.1 s, ≤ your budget |
+| "Where is X handled?" | grep cascade, 3–10 file reads | `search`, one shot, `path:line` |
+| "What's in this file?" | read 2000 lines | `outline`, read 25 lines |
+| "Safe to change this?" | find out from broken tests | `impact`, candidates up front |
+
+Measured end-to-end on a real navigation task: **~2.8k tokens vs ~67k (24×)**
+— reproducible via `python benchmarks/bench_django.py`.
+
+## What an agent session looks like
+
+With the policy from `lotsman init` (and optionally the MCP server), an agent
+asked *"where is NodeBehaviour defined, who uses it, and what would a change
+affect?"* on a 2008-file Unity project answered in 31 seconds with:
+
+> **Read 1 file, called lotsman 4 times**
+
+— definition at exact `path:line`, all 74 usages grouped by domain, the
+heaviest consumer flagged, and a change-risk summary. The equivalent
+grep-and-read cascade reads dozens of files into context and keeps paying for
+them on every subsequent turn. That live session, plus the reproducible
+numbers, are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Commands
 

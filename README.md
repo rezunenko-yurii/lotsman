@@ -46,7 +46,7 @@ answered an impact question with 4 lotsman calls and a single 15-line file read.
 pip install "lotsman[embeddings] @ git+https://github.com/rezunenko-yurii/lotsman"
 cd /your/project
 lotsman init --agent codex      # policy in AGENTS.md, .lotsmanignore skeleton,
-                                # Codex MCP registration hint, first index + warm cache
+                                # Codex skill, MCP hint, first index + warm cache
 lotsman map --budget 1500       # the most important symbols, token-budgeted
 ```
 
@@ -66,6 +66,11 @@ text the agent sees**.
 The local index is deep: `index` scans the whole repo, extracts symbols and
 references, stores vectors when embeddings are installed, and keeps the result
 in `.lotsman/index.db`. That work costs local CPU/disk, not agent context.
+It is one SQLite database per repository, not a cluster of per-node databases:
+files, symbols, identifier counts, optional vectors, metadata and rank cache
+all live in that file. Lotsman builds graph nodes from the indexed files when
+ranking, but those nodes are logical query-time structures over the same local
+database.
 
 Retrieval is narrow: `map`, `search`, `outline`, `defs`, `refs`, and `impact`
 return small, task-shaped slices. The agent should start with a compact map,
@@ -84,6 +89,25 @@ Map output size is controlled by budget and focus:
 Large map outputs are not deeper indexing; they are simply more text returned
 to the agent. Prefer a full local index plus small retrieval slices. Increase
 the map budget only when the agent genuinely needs a broader view.
+
+What each slice returns:
+
+| Slice | What it returns | What it does not return | When to ask |
+|---|---|---|---|
+| `map --budget N` | Ranked `path:line` symbols and signatures across the repo | Function bodies, prose summaries, all symbols | Need orientation or a wider/narrower project sketch |
+| `map --mention X` | Same format, re-ranked around an identifier/task term | A saved subsystem model | Task has a clear concept, API, feature, or domain word |
+| `map --focus file.py` | Same format, biased by a file already in context and excluding that file from output | A file outline or call graph | A file is known and the agent needs surrounding dependencies |
+| `search "query"` | Scored candidate definitions by meaning/name: score, path, line, kind, signature | Full-text grep output or code bodies | Need to find where behavior likely lives |
+| `outline file.py` | Symbols inside one file with line ranges | File contents | Need to decide which lines to read |
+| `defs NAME` | Definitions of one symbol name | Usage sites | Need exact declaration locations |
+| `refs NAME` | Definitions plus files that reference the name, with counts | Type-resolved references or proof of completeness | Before changing a symbol/API |
+| `impact files...` | Changed-file symbols and candidate dependent files | Compiler-grade blast radius | Before/after edits to choose checks and tests |
+
+Slices are not stored as durable artifacts. The durable state is the index;
+default rank results may be cached for speed, while `mention`/`focus` slices are
+recomputed from the current index. If a durable human-readable subsystem
+summary is needed, that should be a separate generated artifact, not the normal
+map output.
 
 Index freshness is automatic for normal use:
 
@@ -282,7 +306,7 @@ numbers, are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 | Command | Answers |
 |---|---|
-| `lotsman init [--agent claude\|codex\|cursor] [--no-index]` | set up AGENTS.md policy, ignore files, per-agent MCP setup/instructions, and the first index |
+| `lotsman init [--agent claude\|codex\|cursor] [--no-index]` | set up AGENTS.md policy, ignore files, per-agent skills/MCP setup, and the first index |
 | `lotsman index [--verify] [--no-embed]` | build/update the index (incremental; `--verify` re-hashes everything) |
 | `lotsman map [--budget N] [--focus F] [--mention I]` | "how is this project structured; what matters?" |
 | `lotsman search "query" [--mode auto\|hybrid\|bm25\|vector]` | "where is the code that does X?" |
@@ -311,8 +335,10 @@ regex/lexical heuristics.
 Full per-agent guide with lifehacks: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 Three integration levels, from lightest to deepest:
 
-**1. AGENTS.md policy** (written by `lotsman init`) — teach the agent to
-prefer the index over reading:
+**1. AGENTS.md policy + agent skill** (written by `lotsman init`) — teach the
+agent to prefer the index over reading. The AGENTS.md block is the portable
+anchor; `--agent codex` and `--agent claude` also write a
+`lotsman-navigation` skill in each agent's native project-local format:
 
 ```markdown
 ## Code navigation: lotsman

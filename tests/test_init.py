@@ -48,6 +48,11 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("mcp", mcp["mcpServers"]["lotsman"]["args"])
         claude = (self.tmp / "CLAUDE.md").read_text()
         self.assertIn("@AGENTS.md", claude)
+        skill = self.tmp / ".claude" / "skills" / "lotsman-navigation" / "SKILL.md"
+        text = skill.read_text()
+        self.assertIn("allowed-tools:", text)
+        self.assertIn("Bash(lotsman:*)", text)
+        self.assertIn("Deep local index, narrow retrieval", text)
 
     def test_mcp_json_merge_preserves_other_servers(self):
         (self.tmp / ".mcp.json").write_text(json.dumps(
@@ -75,6 +80,11 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
     def test_codex_prints_global_registration(self):
         out = self._init(agents=["codex"])
         self.assertIn("codex mcp add lotsman", out)
+        skill = self.tmp / ".codex" / "skills" / "lotsman-navigation" / "SKILL.md"
+        text = skill.read_text()
+        self.assertIn("name: lotsman-navigation", text)
+        self.assertIn("Deep local index, narrow retrieval", text)
+        self.assertNotIn("allowed-tools:", text)
 
     def test_cursor_config(self):
         self._init(agents=["cursor"])

@@ -7,10 +7,10 @@ Universal steps (always):
 - build the index and warm the rank cache so the first agent query is instant.
 
 Per-agent config (opt-in via --agent):
-- claude: .mcp.json entry + CLAUDE.md pointer importing AGENTS.md;
+- claude: .mcp.json entry + CLAUDE.md pointer + Claude skill;
 - cursor: .cursor/mcp.json entry;
-- codex: prints the global registration command (Codex reads
-  ~/.codex/config.toml, not project files — we never edit user-global config).
+- codex: Codex skill + global registration command (Codex reads
+  ~/.codex/config.toml for MCP; we never edit user-global config).
 """
 
 from __future__ import annotations
@@ -27,6 +27,8 @@ POLICY = """{begin}
 ## Code navigation: lotsman
 
 Use `{cmd}` before reading files — it is cheaper and faster than reading:
+Lotsman is a deep local index plus narrow retrieval layer: ask for the next
+small slice, not the whole project.
 
 1. New task in unfamiliar territory -> `{cmd} map --budget 1500 --mention <identifier>`
 2. "Where is the code that does X?"  -> `{cmd} search "X"` instead of grep chains
@@ -45,6 +47,80 @@ IGNORE_SKELETON = """\
 # vendor/
 # third_party/
 # *.gen.cs
+"""
+
+CODEX_SKILL = """\
+---
+name: lotsman-navigation
+description: Use when Codex needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, file inspection, definitions/references, impact analysis, or avoiding broad reads.
+---
+
+# Lotsman Navigation
+
+## Core Model
+
+Deep local index, narrow retrieval. Lotsman indexes the repo deeply in
+`.lotsman/index.db`, but the agent should request only the next useful slice.
+Do not confuse a larger `map --budget` with deeper indexing.
+
+Prefer MCP tools when available: `mcp__lotsman.map`, `search`, `outline`,
+`defs`, `refs`, and `impact`. Fall back to CLI commands when MCP is unavailable.
+
+## Slice Selection
+
+| Situation | Ask for |
+|---|---|
+| Unfamiliar area | `map` around task terms, budget 1200-1800 |
+| Clear concept/domain/API | `map` with `mentions` / `--mention` |
+| Behavior or feature search | `search` before grep or broad reads |
+| Candidate file found | `outline`, then read only relevant ranges |
+| Symbol/API change | `refs` before editing |
+| File or batch change | `impact` before and after editing |
+| Need broader context | Increase map budget only with mention/focus |
+
+## Rules
+
+- Start compact; widen only when the task demands it.
+- Read files only after `search` or `outline` makes them relevant.
+- Treat `refs` and `impact` as name-based candidate lists, not proof.
+- Use `doctor` or `index --verify` when freshness or environment health is in doubt.
+"""
+
+CLAUDE_SKILL = """\
+---
+name: lotsman-navigation
+description: Use when Claude Code needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, file inspection, definitions/references, impact analysis, or avoiding broad reads.
+allowed-tools: Bash(lotsman:*), Bash(python3 -m lotsman:*), Read, Grep
+---
+
+# Lotsman Navigation
+
+## Core Model
+
+Deep local index, narrow retrieval. Lotsman indexes the repo deeply in
+`.lotsman/index.db`, but the agent should request only the next useful slice.
+Do not confuse a larger `map --budget` with deeper indexing.
+
+Use `lotsman` before broad reads. If only `python3 -m lotsman` works in this
+checkout, use that command prefix instead.
+
+## Slice Selection
+
+| Situation | Ask for |
+|---|---|
+| Unfamiliar area | `lotsman map --budget 1500 --mention <task-term>` |
+| Behavior or feature search | `lotsman search "<query>"` |
+| Candidate file found | `lotsman outline <file>`, then read only relevant ranges |
+| Symbol/API change | `lotsman refs <name>` before editing |
+| File or batch change | `lotsman impact <files>` before and after editing |
+| Need broader context | Increase map budget only with `--mention` or `--focus` |
+
+## Rules
+
+- Start compact; widen only when the task demands it.
+- Read files only after `search` or `outline` makes them relevant.
+- Treat `refs` and `impact` as name-based candidate lists, not proof.
+- Use `lotsman doctor` or `lotsman index --verify` when freshness or environment health is in doubt.
 """
 
 
@@ -130,6 +206,15 @@ def _ensure_claude_pointer(root: Path) -> bool:
     return True
 
 
+def _write_skill(path: Path, text: str) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.read_text() == text:
+        return "unchanged"
+    status = "refreshed" if path.exists() else "created"
+    path.write_text(text)
+    return status
+
+
 def run_init(root: Path, agents: list[str], no_index: bool = False) -> int:
     cmd, argv, env = _invocation()
     say = lambda s: print(f"[init] {s}")  # noqa: E731
@@ -146,10 +231,18 @@ def run_init(root: Path, agents: list[str], no_index: bool = False) -> int:
                 say("claude: registered MCP server in .mcp.json")
             if _ensure_claude_pointer(root):
                 say("claude: CLAUDE.md points to AGENTS.md")
+            status = _write_skill(
+                root / ".claude" / "skills" / "lotsman-navigation" / "SKILL.md",
+                CLAUDE_SKILL)
+            say(f"claude: lotsman-navigation skill {status}")
         elif agent == "cursor":
             if _merge_mcp_json(root / ".cursor" / "mcp.json", argv, env):
                 say("cursor: registered MCP server in .cursor/mcp.json")
         elif agent == "codex":
+            status = _write_skill(
+                root / ".codex" / "skills" / "lotsman-navigation" / "SKILL.md",
+                CODEX_SKILL)
+            say(f"codex: lotsman-navigation skill {status}")
             say("codex reads AGENTS.md automatically; for MCP tools register "
                 "once globally:")
             say(f"  codex mcp add lotsman -- {cmd} --repo . mcp")

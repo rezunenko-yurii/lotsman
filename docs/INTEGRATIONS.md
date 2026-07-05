@@ -14,14 +14,21 @@ From the root of any repository:
 ```bash
 lotsman init                     # universal: AGENTS.md policy, .lotsmanignore,
                                  # .gitignore entry, first index + warm cache
-lotsman init --agent claude      # + .mcp.json and a CLAUDE.md -> AGENTS.md pointer
+lotsman init --agent claude      # + .mcp.json, CLAUDE.md pointer, Claude skill
 lotsman init --agent cursor      # + .cursor/mcp.json
-lotsman init --agent codex       # prints the one-time global registration command
+lotsman init --agent codex       # + Codex skill, prints global MCP registration
 ```
 
 `init` is idempotent: the policy lives between `<!-- lotsman:policy:begin/end -->`
 markers and is refreshed in place; existing content in AGENTS.md, .mcp.json and
-CLAUDE.md is preserved.
+CLAUDE.md is preserved. Agent-specific skill files are refreshed in place:
+
+- Codex: `.codex/skills/lotsman-navigation/SKILL.md`
+- Claude Code: `.claude/skills/lotsman-navigation/SKILL.md`
+
+The two skill files intentionally differ. Codex gets plain `name` /
+`description` frontmatter; Claude Code gets Claude-compatible frontmatter with
+`allowed-tools` for `lotsman` shell calls.
 
 Two integration channels exist and they are complementary:
 
@@ -35,7 +42,9 @@ Two integration channels exist and they are complementary:
 ### Claude Code (verified: 2.1.150)
 
 `lotsman init --agent claude` writes `.mcp.json` and points CLAUDE.md at
-AGENTS.md (one source of truth via the `@AGENTS.md` import). Optional but
+AGENTS.md (one source of truth via the `@AGENTS.md` import). It also writes a
+Claude-compatible `.claude/skills/lotsman-navigation/SKILL.md`, including
+Claude's `allowed-tools` metadata for `lotsman` commands. Optional but
 recommended — session-start map injection in `.claude/settings.json`:
 
 ```json
@@ -51,6 +60,11 @@ with a warm rank cache) and never needs to ask for it.
 ### Codex CLI
 
 Codex reads `AGENTS.md` automatically — the policy channel needs nothing else.
+`lotsman init --agent codex` also writes
+`.codex/skills/lotsman-navigation/SKILL.md`, a Codex-native skill that teaches
+the deep-index / narrow-retrieval workflow and prefers MCP tools when
+available.
+
 For MCP tools, register **once, globally** (Codex reads `~/.codex/config.toml`;
 project-local `.codex/` files are not picked up):
 

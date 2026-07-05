@@ -78,4 +78,25 @@ Declined from the review, with reasons: MCP SDK adoption (hand-rolled subset
 is a deliberate zero-infrastructure choice, empirically verified against the
 real client; revisit if a client breaks), mtime_ns/inode tracking (float
 mtime already gives ~µs resolution; `--verify` addresses the actual risk),
-test-file split (49 tests in one file is still navigable; split on growth).
+test-file split (deferred to v1.2).
+
+## v1.2 — quality gates (stage 15)
+
+Response to the second review round:
+
+- `doctor --json` + `--fail-on-warn`: machine-readable health for agents/CI.
+  Declined the per-policy flag zoo (`--fail-on-fallback-language X` etc.) —
+  the JSON output lets any policy be expressed externally.
+- Benchmark harness now asserts quality, not just speed: map-baseline symbols,
+  no-generic-tops regex, and top-5 hit rate on four navigation questions;
+  non-zero exit on regression. Found and fixed a real gap while calibrating:
+  the harness didn't embed, so gates ran in BM25 mode while the CLI defaults
+  to hybrid.
+- Confidence markers moved into command *output* (`impact` header, `refs`
+  label) — agents read output, not READMEs.
+- MCP protocol fixtures: malformed JSON recovery, truncation, stdout purity,
+  pinned tool schemas.
+- Test monolith split into 10 layered files (56 tests) — the reviewer raised
+  it twice; twice is a signal, not a taste.
+- Declined `doctor --sample` (result-quality inspection belongs to the
+  benchmark quality gates, not another doctor mode).

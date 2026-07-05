@@ -1,8 +1,8 @@
 # Lotsman
 
-> A *lotsman* (лоцман) is a maritime pilot — the person who boards a ship and
-> guides it through waters they know by heart. Lotsman does the same for AI
-> agents in large codebases.
+> A *lotsman* is a maritime pilot — the one who boards a ship and guides it
+> through waters they know by heart. Lotsman does the same for AI agents in
+> large codebases.
 
 [![CI](https://github.com/rezunenko-yurii/lotsman/actions/workflows/ci.yml/badge.svg)](https://github.com/rezunenko-yurii/lotsman/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
@@ -82,7 +82,7 @@ referenced by:
 | `lotsman outline FILE` | "what's inside this file?" — without reading it |
 | `lotsman defs NAME` / `lotsman refs NAME` | "where is it defined / who uses it?" |
 | `lotsman impact [FILES...] [--since H]` | "what changed and what depends on it?" (heuristic) |
-| `lotsman doctor` | "what's active, what degraded, is the index fresh?" |
+| `lotsman doctor [--json] [--fail-on-warn]` | "what's active, what degraded, is the index fresh?" — JSON + exit codes for CI/agent gates |
 | `lotsman stats` / `lotsman mcp` | index statistics / MCP stdio server |
 
 `--json` on `search` / `outline` / `defs` / `refs` / `index` gives
@@ -190,9 +190,9 @@ Numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 ## Development
 
 ```bash
-python -m unittest discover -s tests   # 47 tests, no test-only deps
-python benchmarks/bench_django.py      # reproducible perf + token numbers
-lotsman doctor                         # environment health
+python -m unittest discover -s tests   # 56 tests across layered files, no test-only deps
+python benchmarks/bench_django.py      # reproducible perf numbers + quality gates
+lotsman doctor --json                  # environment health, machine-readable
 ```
 
 License: [MIT](LICENSE). Changes: [CHANGELOG.md](CHANGELOG.md).

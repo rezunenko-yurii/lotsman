@@ -70,7 +70,13 @@ def generate_impact(store: Store, changed: list[str],
             dependents[path][name] = count
             uses_by_name[name] += count
 
-    lines: list[str] = [f"Changed files ({len(changed)}):"]
+    # The disclaimer travels with the output, not just the docs: agents read
+    # command output, not READMEs.
+    lines: list[str] = [
+        "note: heuristic, name-based matching (no type resolution) — may miss "
+        "reflection/DI/codegen and type-resolved usages",
+        f"Changed files ({len(changed)}):",
+    ]
     for path in changed:
         syms = store.symbols_in_file(path)
         lines.append(f"\n{path}:")

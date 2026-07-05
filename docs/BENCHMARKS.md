@@ -17,12 +17,27 @@ extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (2272 files, ~43k symbols) | 3.7 s |
+| Cold index (2272 files, ~41k symbols) | 3.9 s |
+| Embedding pass (all symbols) | 1.5 s |
 | No-op reindex | 0.12 s |
-| Reindex after a 1-file edit | 0.14 s |
+| Reindex after a 1-file edit | 0.13 s |
 | `map` — cold (computes PageRank) | 0.99 s |
-| `map` — warm (rank cache) | **0.05 s** |
-| `search` (hybrid) | 1.0 s |
+| `map` — warm (rank cache) | **0.07 s** |
+| `search` (hybrid) | 0.55 s |
+
+## Quality gates
+
+The same run asserts result *quality*, not just speed, and exits non-zero on
+failure — the Django baseline from [DESIGN.md](DESIGN.md) is executable:
+
+- the default map must contain `cached_property`, `ValidationError`,
+  `ForeignKey` and must not be topped by generic method names
+  (`value` / `list` / `request` / `data`);
+- four navigation questions must surface the expected file in the top-5,
+  e.g. `"validate unique fields model"` → `django/db/models/base.py`.
+
+Gates are calibrated for hybrid search (the default when the `[embeddings]`
+extra is installed); the harness embeds after indexing exactly like the CLI.
 
 ## Token-cost scenario
 

@@ -192,7 +192,7 @@ class McpServer:
             lines.append("defined in:")
             lines += [f"  {d.path}:{d.line}  [{d.kind}] {d.signature}" for d in defs]
         if ref_only:
-            lines.append("referenced by:")
+            lines.append("referenced by (name-based matching, no type resolution):")
             lines += [f"  {p}  ({c}x)" for p, c in ref_only[:limit]]
         return "\n".join(lines)
 

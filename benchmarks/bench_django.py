@@ -26,11 +26,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lotsman import indexer, repomap, search  # noqa: E402
+from lotsman import embed, indexer, repomap, search  # noqa: E402
 from lotsman.textutil import estimate_tokens  # noqa: E402
 
 DJANGO_REPO = "https://github.com/django/django.git"
 DJANGO_TAG = "5.2"  # pinned for reproducibility
+
+# --- quality baseline (regression guard, see docs/DESIGN.md) ----------------
+# The default map must surface genuinely central Django internals...
+MAP_MUST_CONTAIN = ["cached_property", "ValidationError", "ForeignKey"]
+# ...and must not be topped by generic method names — that pattern indicated
+# ranking regressions during development.
+MAP_MUST_NOT_MATCH = r"def (value|list|request|data)\("
+# Navigation questions: the expected file must appear in the top-k hits.
+NAV_QUESTIONS = [
+    ("validate unique fields model", "django/db/models/base.py", 5),
+    ("http response redirect", "django/http/response.py", 5),
+    ("clean form field value", "django/forms/fields.py", 5),
+    ("template context push", "django/template/context.py", 5),
+]
 
 
 def timed(fn, *args, **kwargs):
@@ -80,6 +94,22 @@ def scenario_tokens(root: Path, store) -> tuple[int, int]:
     return smart, naive
 
 
+def quality_checks(store) -> list[tuple[str, bool]]:
+    """Deterministic quality gates; a failure means a ranking/search regression."""
+    import re
+    checks: list[tuple[str, bool]] = []
+    map_text = repomap.generate_map(store, budget=2048)
+    for sym in MAP_MUST_CONTAIN:
+        checks.append((f"map contains {sym}", sym in map_text))
+    checks.append((f"map has no generic tops ({MAP_MUST_NOT_MATCH})",
+                   re.search(MAP_MUST_NOT_MATCH, map_text) is None))
+    for query, expected, k in NAV_QUESTIONS:
+        hits = search.search(store, query, limit=k)
+        found = any(expected == h.symbol.path for h in hits)
+        checks.append((f"search '{query}' -> {expected} in top-{k}", found))
+    return checks
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--django-dir", help="existing Django checkout (skips clone)")
@@ -94,6 +124,11 @@ def main() -> int:
 
         res, t = timed(indexer.index_repo, root, store)
         rows.append(("cold index", f"{t:.2f}s ({res.scanned} files)"))
+        # Embed like the default CLI `index` does — quality gates are
+        # calibrated for hybrid search.
+        n, t = timed(embed.embed_missing, store)
+        rows.append(("embedding pass",
+                     f"{t:.2f}s ({n} symbols)" if n else "skipped — no model2vec"))
         res, t = timed(indexer.index_repo, root, store)
         rows.append(("no-op reindex", f"{t:.2f}s"))
 
@@ -114,6 +149,8 @@ def main() -> int:
         rows.append(("scenario: lotsman tokens", f"~{smart:,}"))
         rows.append(("scenario: whole-files tokens", f"~{naive:,}"))
         rows.append(("scenario: savings", f"{naive / smart:.0f}x"))
+
+        quality = quality_checks(store)
         store.close()
     finally:
         if is_temp and not args.keep:
@@ -124,6 +161,19 @@ def main() -> int:
     print("-" * (width + 20))
     for name, value in rows:
         print(f"{name:<{width}}  {value}")
+
+    print("\nquality gates")
+    if not embed.available():
+        print("warning: model2vec unavailable — gates are calibrated for "
+              "hybrid search and may misreport in BM25-only mode")
+    print("-" * (width + 20))
+    failed = 0
+    for name, ok in quality:
+        print(f"{'PASS' if ok else 'FAIL'}  {name}")
+        failed += 0 if ok else 1
+    if failed:
+        print(f"\n{failed} quality gate(s) FAILED — ranking/search regression")
+        return 1
     return 0
 
 

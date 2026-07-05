@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.2.0 — 2026-07-05
+
+Quality gates and machine-readable health, in response to the second external
+review round.
+
+- **`lotsman doctor --json`** — machine-readable health report for agents/CI;
+  **`--fail-on-warn`** turns warnings (stale index, missing embeddings,
+  grammar fallbacks) into a non-zero exit. Any policy can be built on the JSON.
+- **Quality gates in the benchmark harness**: `benchmarks/bench_django.py` now
+  asserts map content (must contain `cached_property` / `ValidationError` /
+  `ForeignKey`, must not be topped by generic names) and top-k hit rate for
+  four navigation questions; a failure exits non-zero. The Django baseline is
+  now executable, not just documented. The harness also embeds by default,
+  matching CLI behavior — gates run in hybrid-search mode.
+- **Confidence markers in command output** (not only in docs — agents read
+  output): `impact` starts with a heuristic/name-based disclaimer; `refs`
+  labels its reference list as name-based matching without type resolution.
+- **MCP protocol fixtures**: malformed-JSON recovery, output truncation,
+  stdout purity (every line must parse as JSON-RPC), tool-schema stability
+  (required arguments are pinned by test).
+- **Test suite split by layer**: `test_extract / test_scanner / test_graph /
+  test_indexing / test_repomap / test_search / test_impact / test_doctor /
+  test_mcp / test_cli` (56 tests).
+- README fully English (the tagline no longer needs a dictionary).
+
 ## 1.1.0 — 2026-07-05
 
 Trust hardening after external review, English docs, visual polish.

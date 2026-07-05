@@ -148,7 +148,7 @@ def cmd_refs(args) -> int:
         for d in defs:
             print(f"  {d.path}:{d.line}  [{d.kind}] {d.signature}")
     if ref_only:
-        print("referenced by:")
+        print("referenced by (name-based matching, no type resolution):")
         for p, c in ref_only[:args.limit]:
             print(f"  {p}  ({c}x)")
     if not defs and not ref_only:
@@ -175,7 +175,8 @@ def cmd_impact(args) -> int:
 
 def cmd_doctor(args) -> int:
     from lotsman.doctor import run_doctor
-    return run_doctor(_root(args))
+    return run_doctor(_root(args), as_json=args.json,
+                      fail_on_warn=args.fail_on_warn)
 
 
 def cmd_mcp(args) -> int:
@@ -249,6 +250,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.set_defaults(fn=cmd_stats)
 
     sp = sub.add_parser("doctor", help="environment and index health check")
+    sp.add_argument("--json", action="store_true",
+                    help="machine-readable report for agents/CI")
+    sp.add_argument("--fail-on-warn", action="store_true",
+                    help="exit 1 on warnings, not only on failures")
     sp.set_defaults(fn=cmd_doctor)
 
     sp = sub.add_parser("impact", help="changed files + who depends on them")

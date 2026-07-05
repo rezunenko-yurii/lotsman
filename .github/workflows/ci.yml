@@ -28,3 +28,26 @@ jobs:
           lotsman map --budget 400
           lotsman search "pagerank power iteration" -k 3
           lotsman doctor --json
+
+  package:
+    # The editable install above exercises repo-checkout paths; this job
+    # proves the wheel itself installs and runs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel
+      - name: Install wheel and smoke-test
+        run: |
+          pip install dist/*.whl
+          cd /tmp
+          lotsman --version
+          mkdir smoke && cd smoke && echo "def probe(): pass" > probe.py
+          lotsman index --no-embed
+          lotsman doctor --json
+          lotsman outline probe.py

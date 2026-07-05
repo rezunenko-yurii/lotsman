@@ -100,3 +100,20 @@ Response to the second review round:
   it twice; twice is a signal, not a taste.
 - Declined `doctor --sample` (result-quality inspection belongs to the
   benchmark quality gates, not another doctor mode).
+
+## v1.3 — release-state guarantees (stage 16)
+
+Fourth review round. Its "verify tests actually run" item paid off in an
+unexpected place: checking GitHub Actions revealed the CI workflow had been
+invalid YAML since it landed (unquoted colon in a step name) and had never
+executed. Fixed; six-configuration matrix green since.
+
+- Release consistency test: pyproject / `__version__` / CHANGELOG must agree;
+  Beta classifier pinned by test.
+- `--version` flag; `refs --json` carries a machine-readable confidence block.
+- Install-path CI job: wheel build + install + CLI smoke outside the checkout.
+- README documents which MCP client is verified (Claude Code 2.1.150).
+- Deferred: Unity/C# and TypeScript quality corpora (real gap, separate
+  effort — needs a pinned public corpus and honest calibration, not a quick
+  patch; the private Unity battleground continues to serve as the informal
+  gate).

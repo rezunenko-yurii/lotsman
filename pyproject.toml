@@ -1,6 +1,6 @@
 [project]
 name = "lotsman"
-version = "1.2.0"
+version = "1.3.0"
 description = "Local codebase index for AI agents: PageRank repo map, hybrid symbol search, reference graph, impact analysis, MCP server"
 readme = "README.md"
 license = "MIT"

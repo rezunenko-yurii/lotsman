@@ -127,7 +127,12 @@ Use `lotsman` before reading files (cheaper and faster than reading):
 ```
 
 The server keeps the index fresh itself (throttled incremental reindex) and is
-implemented on the stdlib — verified against Claude Code 2.1.150.
+implemented on the stdlib as a deliberate protocol subset (initialize,
+tools/list, tools/call, ping). **Verified clients:** Claude Code 2.1.150 —
+`.mcp.json` launch, handshake, tool calls, and a live agent session (see
+[docs/DEVLOG.md](docs/DEVLOG.md)). Other MCP clients should work but are
+untested; if one breaks on a lifecycle nuance, file an issue with the
+JSON-RPC transcript.
 
 **3. Session-start map injection** — the agent starts every session already
 holding the map. `.claude/settings.json`:

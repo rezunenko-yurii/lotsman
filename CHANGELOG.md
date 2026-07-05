@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.0 — 2026-07-05
+
+Release-state guarantees, in response to the fourth review round.
+
+- **Release consistency test** (`tests/test_release.py`): pyproject version,
+  `lotsman.__version__` and the CHANGELOG top entry must match; the Beta
+  classifier is pinned by a test so raising maturity is a deliberate act.
+- **`lotsman --version`** flag.
+- **Machine-readable confidence**: `refs --json` now carries a `confidence`
+  block (`heuristic` / `name-based` / `type_resolution: false` / known blind
+  spots) — the JSON contract is as honest as the text output.
+- **Install-path CI job**: builds the wheel, installs it, and smoke-tests the
+  CLI outside the repo checkout — packaging regressions can't hide behind
+  `pip install -e`.
+- **MCP compatibility note** in README: which client is actually verified
+  (Claude Code 2.1.150) and what to do when another client breaks.
+- CI fix (shipped between releases): the workflow file was invalid YAML from
+  day one (unquoted colon in a step name) and had never actually run; all six
+  matrix configurations are green as of this release.
+
 ## 1.2.0 — 2026-07-05
 
 Quality gates and machine-readable health, in response to the second external

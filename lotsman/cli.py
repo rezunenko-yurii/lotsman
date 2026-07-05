@@ -13,6 +13,16 @@ from lotsman import embed, indexer, repomap, search as search_mod
 from lotsman.store import Store
 
 
+# Confidence contract for name-based lookups, embedded in JSON outputs.
+REFS_CONFIDENCE = {
+    "level": "heuristic",
+    "resolution": "name-based",
+    "type_resolution": False,
+    "known_blind_spots": ["reflection", "dependency_injection",
+                          "generated_code", "serialized_assets"],
+}
+
+
 def _root(args) -> Path:
     root = Path(args.repo).resolve()
     if not root.is_dir():
@@ -141,6 +151,9 @@ def cmd_refs(args) -> int:
         print(json.dumps({
             "definitions": [asdict(d) for d in defs],
             "references": [{"path": p, "count": c} for p, c in ref_only],
+            # JSON must carry the same honesty as the text output — agents
+            # binding to this shape must see the confidence level.
+            "confidence": REFS_CONFIDENCE,
         }, ensure_ascii=False))
         return 0
     if defs:
@@ -194,10 +207,13 @@ def cmd_stats(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from lotsman import __version__
     p = argparse.ArgumentParser(
         prog="lotsman",
         description="Local codebase index for AI agents: repo map, symbol "
                     "search, reference graph.")
+    p.add_argument("--version", action="version",
+                   version=f"lotsman {__version__}")
     p.add_argument("--repo", default=".", help="repository root (default: cwd)")
     sub = p.add_subparsers(dest="cmd", required=True)
 

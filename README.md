@@ -14,6 +14,10 @@ search (BM25 + local embeddings), reference lookups, a heuristic impact map,
 and an MCP server. No API keys, no daemons, no cloud — Python + tree-sitter,
 the whole index in a single SQLite file.
 
+**Status: Beta.** Lotsman is a heuristic navigation index for AI agents, not a
+compiler-grade code-intelligence engine: it finds *candidates to check*, it
+does not prove completeness.
+
 **The problem.** On a large project an agent burns most of its tokens on
 navigation: grep cascades, reading whole files for two relevant lines,
 re-finding things it already saw. **The approach:** pay once to build a local
@@ -179,8 +183,9 @@ Numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
   matched to definitions by name, without type resolution — same-named methods
   of different classes blur together. IDF weighting, the ambient-vocabulary
   cutoff and builtin stopwords absorb most of the noise, but treat `impact`
-  as a navigation aid, not a verified dependency graph. For php, references
-  are lexical (no ref query yet).
+  output as candidates to re-check, not a complete blast radius: DI wiring,
+  reflection, codegen, serialized/scene references stay invisible to
+  name-based analysis. For php, references are lexical (no ref query yet).
 - **Static embeddings** catch related vocabulary and word forms, not deep
   paraphrases. Swap the model via `LOTSMAN_EMBED_MODEL`.
 - **One repo = one index.** No cross-repository references.

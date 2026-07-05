@@ -1,1 +1,17 @@
+# codemap's own index
 .codemap/
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# tooling
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.DS_Store

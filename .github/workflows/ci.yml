@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install (with optional embeddings)
+        run: pip install -e ".[embeddings]"
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Smoke: self-index
+        run: |
+          codemap index
+          codemap map --budget 400
+          codemap search "pagerank power iteration" -k 3

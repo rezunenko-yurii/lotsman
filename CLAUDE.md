@@ -15,7 +15,7 @@ MCP-вариант: сервер объявлен в `.mcp.json` (инструм
 
 ## Проект
 
-- Манифест и алгоритмы: `MANIFEST.md`; план и статус: `PLAN.md`
+- Манифест и алгоритмы: `docs/MANIFEST.md`; журнал разработки: `docs/PLAN.md`
 - Тесты: `python3 -m unittest discover -s tests` (обязательны перед коммитом)
 - Зависимости: tree-sitter + tree-sitter-language-pack; model2vec опционален —
   весь код должен деградировать без него (см. `embed.available()`)

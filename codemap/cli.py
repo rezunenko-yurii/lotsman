@@ -157,6 +157,22 @@ def cmd_refs(args) -> int:
     return 0
 
 
+def cmd_impact(args) -> int:
+    from codemap import impact
+    root = _root(args)
+    store = _open(root)
+    indexer.index_repo(root, store)  # impact must see the current disk state
+    if args.files:
+        changed, method = list(args.files), "explicit"
+    else:
+        changed, method = impact.detect_changed(root, store, args.since)
+    out = impact.generate_impact(store, changed, budget=args.budget)
+    store.close()
+    print(out, end="")
+    print(f"[codemap] impact via {method}", file=sys.stderr)
+    return 0
+
+
 def cmd_mcp(args) -> int:
     from codemap.mcp_server import serve
     return serve(_root(args))
@@ -224,8 +240,18 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
 
+    sp = sub.add_parser("impact", help="changed files + who depends on them")
+    sp.add_argument("files", nargs="*",
+                    help="repo-relative paths; empty = auto-detect (git status "
+                         "or mtime window)")
+    sp.add_argument("--since", type=float, default=24.0,
+                    help="hours for mtime-based detection when not a git repo "
+                         "(default 24)")
+    sp.add_argument("--budget", type=int, default=1500)
+    sp.set_defaults(fn=cmd_impact)
+
     sp = sub.add_parser("mcp", help="run MCP stdio server (tools: map, search, "
-                                    "outline, defs, refs)")
+                                    "outline, defs, refs, impact)")
     sp.set_defaults(fn=cmd_mcp)
 
     args = p.parse_args(argv)

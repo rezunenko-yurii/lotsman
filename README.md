@@ -27,6 +27,7 @@ codemap index --no-embed                    # индекс без эмбедди
 codemap outline src/core/engine.py          # скелет файла: символы + строки
 codemap defs process_payment                # где определён символ
 codemap refs process_payment                # кто его использует (файлы + счётчики)
+codemap impact [files...] [--since 24]      # изменённые файлы + кто от них зависит
 codemap stats                               # статистика индекса
 ```
 
@@ -75,6 +76,20 @@ codemap --repo /path/to/repo mcp   # stdio-сервер: map / search / outline 
 
 Сервер сам поддерживает индекс свежим (инкрементальный реиндекс не чаще раза
 в 10 с), реализован на stdlib — без SDK-зависимостей.
+
+## Автоинъекция карты (SessionStart-хук)
+
+Чтобы агент получал карту проекта в контекст при старте сессии автоматически —
+`.claude/settings.json` проекта:
+
+```json
+{"hooks": {"SessionStart": [{"matcher": "startup|clear", "hooks": [{
+  "type": "command",
+  "command": "echo '## Repo map (codemap):'; codemap --repo . map --budget 1200 2>/dev/null"
+}]}]}}
+```
+
+С тёплым кэшем рангов хук отрабатывает за ~0.1–0.3 с и не тормозит старт.
 
 ## Политика использования для агента
 

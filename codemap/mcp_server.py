@@ -78,6 +78,25 @@ TOOLS = [
         },
     },
     {
+        "name": "impact",
+        "description": (
+            "Impact analysis: given changed files (or auto-detected recent "
+            "changes), show their symbols and every file that depends on them, "
+            "ranked by usage. Call BEFORE editing a shared file and AFTER a "
+            "batch of edits to know what to re-check."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "files": {"type": "array", "items": {"type": "string"},
+                          "description": "repo-relative changed files; empty = "
+                                         "auto-detect"},
+                "since_hours": {"type": "number",
+                                "description": "detection window when no git "
+                                               "(default 24)"},
+            },
+        },
+    },
+    {
         "name": "refs",
         "description": ("Who uses a symbol: definitions plus referencing files "
                         "with use counts. Use before changing a signature."),
@@ -141,6 +160,18 @@ class McpServer:
         return "\n".join(
             f"{r.path}:{r.line}  [{r.kind}] {r.signature}" for r in rows)
 
+    def _tool_impact(self, args: dict) -> str:
+        from codemap import impact
+        files = list(args.get("files") or [])
+        if files:
+            changed, method = files, "explicit"
+        else:
+            changed, method = impact.detect_changed(
+                self.root, self.store,
+                float(args.get("since_hours") or impact.DEFAULT_SINCE_HOURS))
+        return (impact.generate_impact(self.store, changed)
+                + f"\n(change detection: {method})")
+
     def _tool_refs(self, args: dict) -> str:
         name = args["name"]
         limit = int(args.get("limit") or 20)
@@ -192,6 +223,7 @@ class McpServer:
             "outline": self._tool_outline,
             "defs": self._tool_defs,
             "refs": self._tool_refs,
+            "impact": self._tool_impact,
         }.get(name)
         if fn is None:
             return self._error(msg_id, -32602, f"unknown tool: {name}")

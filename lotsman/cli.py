@@ -30,12 +30,8 @@ def _root(args) -> Path:
     return root
 
 
-REFRESH_INTERVAL = 10.0  # seconds between implicit incremental refreshes
-
-
 def _open(root: Path, auto_index: bool = True) -> Store:
-    """Open the index, keeping it fresh: read commands must never serve stale
-    line numbers after a pull. The incremental pass is ~0.1 s and throttled."""
+    """Open the index, keeping read commands fresh before serving results."""
     db = root / indexer.DB_RELPATH
     if not db.exists():
         if not auto_index:
@@ -46,15 +42,10 @@ def _open(root: Path, auto_index: bool = True) -> Store:
               file=sys.stderr)
         return store
     store = Store(db)
-    last = store.get_meta("last_implicit_refresh")
-    now = time.time()
-    if last is None or now - float(last) > REFRESH_INTERVAL:
-        res = indexer.index_repo(root, store)
-        store.set_meta("last_implicit_refresh", str(now))
-        store.commit()
-        if res.added or res.updated or res.removed:
-            print(f"[lotsman] index refreshed: +{res.added} ~{res.updated} "
-                  f"-{res.removed}", file=sys.stderr)
+    res = indexer.index_repo(root, store)
+    if res.added or res.updated or res.removed:
+        print(f"[lotsman] index refreshed: +{res.added} ~{res.updated} "
+              f"-{res.removed}", file=sys.stderr)
     return store
 
 

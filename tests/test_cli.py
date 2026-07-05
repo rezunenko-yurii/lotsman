@@ -26,6 +26,26 @@ class TestCLI(FixtureRepoMixin, unittest.TestCase):
                 code = main(argv)
             self.assertEqual(code, 0, f"{argv} -> {buf.getvalue()}")
 
+    def test_read_commands_refresh_after_immediate_file_change(self):
+        def run_outline() -> str:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                code = main(["--repo", str(self.tmp), "outline", "pkg/core.py"])
+            self.assertEqual(code, 0)
+            return buf.getvalue()
+
+        self.assertIn("start_engine", run_outline())
+
+        (self.tmp / "pkg" / "core.py").write_text(
+            "class Engine:\n"
+            "    def ignite_engine(self):\n"
+            "        return 99\n")
+
+        out = run_outline()
+        self.assertIn("ignite_engine", out)
+        self.assertNotIn("start_engine", out)
+
 
 if __name__ == "__main__":
     unittest.main()

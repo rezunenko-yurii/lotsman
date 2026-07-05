@@ -29,13 +29,24 @@ instead of ~67k (24×)** — reproducible via [`benchmarks/`](benchmarks/bench_d
 In a live Claude Code session on a Unity project (2008 C# files), the agent
 answered an impact question with 4 lotsman calls and a single 15-line file read.
 
+## Navigation
+
+- [Quick start](#quick-start)
+- [Operating model: maps, depth, freshness](#operating-model-maps-depth-freshness)
+- [Showcase: five minutes in an unfamiliar codebase](#showcase-five-minutes-in-an-unfamiliar-codebase)
+- [Commands](#commands)
+- [Hooking it up to an agent](#hooking-it-up-to-an-agent)
+- [How it works](#how-it-works)
+- [Honest limitations](#honest-limitations)
+- [Development](#development)
+
 ## Quick start
 
 ```bash
 pip install "lotsman[embeddings] @ git+https://github.com/rezunenko-yurii/lotsman"
 cd /your/project
-lotsman init --agent claude     # policy in AGENTS.md, .lotsmanignore skeleton,
-                                # MCP config, first index + warm cache — one command
+lotsman init --agent codex      # policy in AGENTS.md, .lotsmanignore skeleton,
+                                # Codex MCP registration hint, first index + warm cache
 lotsman map --budget 1500       # the most important symbols, token-budgeted
 ```
 
@@ -46,6 +57,39 @@ lifehacks: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 Everything degrades gracefully: no `model2vec` → BM25-only search; no
 tree-sitter grammar for a language → regex/lexical fallback; not a git repo →
 filesystem walk. Run `lotsman doctor` to see exactly what is active.
+
+## Operating model: maps, depth, freshness
+
+Lotsman's repo map is a **dynamic navigation sketch**, not an architecture
+document. It lists the most important symbols under a token budget, ranked by
+how much the codebase leans on them. The agent should use it to decide what to
+inspect next, then switch to `search`, `outline`, `defs`, `refs`, and targeted
+file reads.
+
+Map depth is controlled by budget and focus:
+
+| Intent | Command shape | Use when |
+|---|---|---|
+| Surface | `lotsman map --budget 800` | first look at a repo |
+| Normal | `lotsman map --budget 1500` | default session start |
+| Detailed | `lotsman map --budget 3000` | broad unfamiliar area |
+| Focused deep | `lotsman map --budget 5000 --mention Billing` | one subsystem or task |
+| File-centered deep | `lotsman map --budget 5000 --focus app/billing.py --mention Refund` | one file is already in context |
+
+Deeper maps cost mostly local CPU/disk while building or refreshing the index,
+but they also cost the agent more context: every returned line is text the
+agent must read and carry. Prefer a normal map, then a focused deep map once
+the task area is known.
+
+Index freshness is automatic for normal use:
+
+- `init` builds the first index and warms the rank cache.
+- CLI read commands (`map`, `search`, `outline`, `defs`, `refs`, `impact`)
+  run a throttled incremental refresh before serving results, so a pull or
+  edit does not leave stale line numbers around for long.
+- The MCP server does the same kind of throttled refresh while serving tools.
+- `doctor` reports the health state explicitly; use `index --verify` when you
+  want a full re-hash instead of the normal mtime/size fast path.
 
 ## Showcase: five minutes in an unfamiliar codebase
 
@@ -67,7 +111,9 @@ $ lotsman init --agent claude
 ```
 
 Indexing 2272 files takes ~4 s once; every later reindex touches only changed
-files (~0.1 s). From here on, every command below answers in **under 0.2 s**.
+files (~0.1 s). Read commands refresh incrementally when needed, throttled to
+avoid doing the same work on every call. From here on, every command below
+answers in **under 0.2 s** on a warm index.
 
 ### Step 1 — get your bearings: `lotsman map`
 
@@ -231,6 +277,7 @@ numbers, are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 | Command | Answers |
 |---|---|
+| `lotsman init [--agent claude\|codex\|cursor] [--no-index]` | set up AGENTS.md policy, ignore files, per-agent MCP setup/instructions, and the first index |
 | `lotsman index [--verify] [--no-embed]` | build/update the index (incremental; `--verify` re-hashes everything) |
 | `lotsman map [--budget N] [--focus F] [--mention I]` | "how is this project structured; what matters?" |
 | `lotsman search "query" [--mode auto\|hybrid\|bm25\|vector]` | "where is the code that does X?" |
@@ -242,6 +289,8 @@ numbers, are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 `--json` on `search` / `outline` / `defs` / `refs` / `index` gives
 machine-readable output. The index lives in `.lotsman/index.db` (gitignore it).
+CLI read commands keep that index fresh with a throttled incremental pass;
+`index --verify` is still available when you need a full re-hash.
 
 Vendored/third-party code is excluded via a `.lotsmanignore` file in the repo
 root (gitignore-lite globs; `dir/` matches the subtree) — essential for Unity
@@ -353,7 +402,7 @@ Numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 ## Development
 
 ```bash
-python -m unittest discover -s tests   # 56 tests across layered files, no test-only deps
+python -m unittest discover -s tests   # layered test suite, no test-only deps
 python benchmarks/bench_django.py      # reproducible perf numbers + quality gates
 lotsman doctor --json                  # environment health, machine-readable
 ```

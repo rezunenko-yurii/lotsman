@@ -22,8 +22,9 @@ jobs:
         run: pip install -e ".[embeddings]"
       - name: Run tests
         run: python -m unittest discover -s tests -v
-      - name: Smoke: self-index
+      - name: "Smoke: self-index"
         run: |
           lotsman index
           lotsman map --budget 400
           lotsman search "pagerank power iteration" -k 3
+          lotsman doctor --json

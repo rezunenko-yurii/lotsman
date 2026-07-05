@@ -32,11 +32,16 @@ answered an impact question with 4 lotsman calls and a single 15-line file read.
 ## Quick start
 
 ```bash
-pip install ".[embeddings]"     # from the repo root; installs the `lotsman` CLI
+pip install "lotsman[embeddings] @ git+https://github.com/rezunenko-yurii/lotsman"
 cd /your/project
-lotsman index                   # build the index (seconds; incremental after)
+lotsman init --agent claude     # policy in AGENTS.md, .lotsmanignore skeleton,
+                                # MCP config, first index + warm cache — one command
 lotsman map --budget 1500       # the most important symbols, token-budgeted
 ```
+
+`init` is idempotent and preserves existing AGENTS.md / .mcp.json content.
+Per-agent setup (Claude Code, Codex, Cursor, generic CLI agents) and workflow
+lifehacks: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 Everything degrades gracefully: no `model2vec` → BM25-only search; no
 tree-sitter grammar for a language → regex/lexical fallback; not a git repo →
@@ -103,9 +108,11 @@ regex/lexical heuristics.
 
 ## Hooking it up to an agent
 
+Full per-agent guide with lifehacks: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 Three integration levels, from lightest to deepest:
 
-**1. CLAUDE.md policy** — teach the agent to prefer the index over reading:
+**1. AGENTS.md policy** (written by `lotsman init`) — teach the agent to
+prefer the index over reading:
 
 ```markdown
 ## Code navigation: lotsman

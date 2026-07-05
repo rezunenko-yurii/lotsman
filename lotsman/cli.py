@@ -186,6 +186,12 @@ def cmd_impact(args) -> int:
     return 0
 
 
+def cmd_init(args) -> int:
+    from lotsman.init_cmd import run_init
+    return run_init(_root(args), agents=args.agent or [],
+                    no_index=args.no_index)
+
+
 def cmd_doctor(args) -> int:
     from lotsman.doctor import run_doctor
     return run_doctor(_root(args), as_json=args.json,
@@ -216,6 +222,16 @@ def main(argv: list[str] | None = None) -> int:
                    version=f"lotsman {__version__}")
     p.add_argument("--repo", default=".", help="repository root (default: cwd)")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("init", help="one-command onboarding: policy in "
+                                     "AGENTS.md, ignore skeleton, agent "
+                                     "configs, first index")
+    sp.add_argument("--agent", action="append",
+                    choices=["claude", "codex", "cursor"],
+                    help="also write agent-specific config (repeatable)")
+    sp.add_argument("--no-index", action="store_true",
+                    help="skip the initial index/warm-up")
+    sp.set_defaults(fn=cmd_init)
 
     sp = sub.add_parser("index", help="build/update the index incrementally")
     sp.add_argument("--json", action="store_true")

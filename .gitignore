@@ -15,3 +15,6 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .DS_Store
+
+# codex reads only the global ~/.codex/config.toml; a local .codex/ is inert
+.codex/

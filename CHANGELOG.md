@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.4.0 — 2026-07-05
+
+Onboarding and multi-agent support: from "clone, read, wire configs by hand"
+to one command.
+
+- **`lotsman init`** — one-command onboarding for any repository: writes the
+  navigation policy into AGENTS.md (marker-delimited, idempotent, preserves
+  existing content), creates a commented `.lotsmanignore` skeleton, adds
+  `.lotsman/` to `.gitignore`, builds the index and warms the rank cache.
+  `--agent claude` adds `.mcp.json` (merged, never clobbered) and a CLAUDE.md
+  pointer importing AGENTS.md; `--agent cursor` adds `.cursor/mcp.json`;
+  `--agent codex` prints the one-time global `codex mcp add` registration.
+- **`docs/INTEGRATIONS.md`** — per-agent setup guide (Claude Code, Codex CLI,
+  Cursor, generic CLI agents) and workflow lifehacks: cache warm-up on merge,
+  `--mention` personalization, `doctor --fail-on-warn` as a pre-flight gate,
+  `.lotsmanignore` before first impressions, AGENTS.md as the single source
+  of truth.
+- AGENTS.md is now the canonical policy location (the emerging cross-agent
+  standard, read natively by Codex and Cursor); CLAUDE.md imports it via
+  `@AGENTS.md` instead of duplicating.
+
 ## 1.3.0 — 2026-07-05
 
 Release-state guarantees, in response to the fourth review round.

@@ -117,3 +117,23 @@ executed. Fixed; six-configuration matrix green since.
   effort — needs a pinned public corpus and honest calibration, not a quick
   patch; the private Unity battleground continues to serve as the informal
   gate).
+
+## v1.4 — onboarding and multi-agent support (stage 17)
+
+DX audit: "how fast can Codex or any other agent start using this?"
+Findings: integrations were Claude Code-flavored (CLAUDE.md, .mcp.json,
+SessionStart hook), onboarding was manual, and Codex specifics were
+undocumented (it reads AGENTS.md natively but takes MCP config only from the
+global ~/.codex/config.toml — project-local .codex/ files are ignored).
+
+- `lotsman init`: one-command onboarding — AGENTS.md policy (marker-delimited,
+  idempotent), .lotsmanignore skeleton, .gitignore entry, index + warm cache;
+  `--agent claude/cursor/codex` for per-agent configs. Config merging never
+  clobbers existing files; unparseable JSON is left untouched.
+- AGENTS.md promoted to the canonical policy location; CLAUDE.md imports it
+  (`@AGENTS.md`) instead of duplicating — duplicated policies drift.
+- docs/INTEGRATIONS.md: per-agent guide + lifehacks (cache warm-up on merge,
+  `--mention` personalization, `doctor --fail-on-warn` pre-flight,
+  ignore-before-first-impressions, per-component indexes in monorepos).
+- The `--repo .` trick in a global Codex registration (cwd-relative, one
+  registration serves all projects) came from the user's own config.

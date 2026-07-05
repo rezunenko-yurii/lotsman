@@ -93,6 +93,9 @@ TOOLS = [
                 "since_hours": {"type": "number",
                                 "description": "detection window when no git "
                                                "(default 24)"},
+                "budget": {"type": "integer",
+                           "description": "token budget for the report "
+                                          "(default 1500; raise if truncated)"},
             },
         },
     },
@@ -169,7 +172,8 @@ class McpServer:
             changed, method = impact.detect_changed(
                 self.root, self.store,
                 float(args.get("since_hours") or impact.DEFAULT_SINCE_HOURS))
-        return (impact.generate_impact(self.store, changed)
+        budget = int(args.get("budget") or impact.DEFAULT_BUDGET)
+        return (impact.generate_impact(self.store, changed, budget=budget)
                 + f"\n(change detection: {method})")
 
     def _tool_refs(self, args: dict) -> str:

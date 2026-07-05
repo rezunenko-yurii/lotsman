@@ -13,8 +13,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from codemap.store import Store
-from codemap.textutil import estimate_tokens
+from lotsman.store import Store
+from lotsman.textutil import estimate_tokens
 
 DEFAULT_SINCE_HOURS = 24.0
 DEFAULT_BUDGET = 1500

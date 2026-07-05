@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from codemap import graph
-from codemap.store import Store, SymbolRow
-from codemap.textutil import estimate_tokens
+from lotsman import graph
+from lotsman.store import Store, SymbolRow
+from lotsman.textutil import estimate_tokens
 
 DEFAULT_BUDGET = 2048
 RANK_CACHE_SIZE = 5000  # top definitions kept; enough for any realistic budget
@@ -43,7 +43,7 @@ def generate_map(
         for definers in definitions.values():
             nodes.update(definers)
         if not nodes:
-            return "(empty index — run `codemap index` first)"
+            return "(empty index — run `lotsman index` first)"
 
         edges = graph.build_edges(definitions, references, mentions)
         personalization = None

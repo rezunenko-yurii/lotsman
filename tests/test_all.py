@@ -1,4 +1,4 @@
-"""Unit and end-to-end tests for codemap (stdlib unittest, no extra deps)."""
+"""Unit and end-to-end tests for lotsman (stdlib unittest, no extra deps)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-from codemap import embed, extract, graph, indexer, repomap, search, textutil
-from codemap.search import Hit
-from codemap.store import Store, SymbolRow
+from lotsman import embed, extract, graph, indexer, repomap, search, textutil
+from lotsman.search import Hit
+from lotsman.store import Store, SymbolRow
 
 
 class TestTextUtil(unittest.TestCase):
@@ -88,7 +88,7 @@ class TestExtract(unittest.TestCase):
 
 class TestIgnoreFile(unittest.TestCase):
     def test_patterns(self):
-        from codemap.scanner import is_ignored
+        from lotsman.scanner import is_ignored
         pats = ["Plugins/", "*.gen.cs", "vendor/*.js", "# not a pattern"]
         self.assertTrue(is_ignored("Plugins/Foo/Bar.cs", pats))
         self.assertTrue(is_ignored("src/Models.gen.cs", pats))
@@ -97,13 +97,13 @@ class TestIgnoreFile(unittest.TestCase):
         self.assertFalse(is_ignored("ExFramework/Core.cs", pats))
 
     def test_scan_respects_ignore(self):
-        tmp = Path(tempfile.mkdtemp(prefix="codemap_ign_"))
+        tmp = Path(tempfile.mkdtemp(prefix="lotsman_ign_"))
         try:
             (tmp / "Plugins").mkdir()
             (tmp / "Plugins" / "vendor.py").write_text("def v():\n    pass\n")
             (tmp / "mine.py").write_text("def m():\n    pass\n")
-            (tmp / ".codemapignore").write_text("# vendored\nPlugins/\n")
-            from codemap import scanner
+            (tmp / ".lotsmanignore").write_text("# vendored\nPlugins/\n")
+            from lotsman import scanner
             paths = {r.path for r in scanner.scan(tmp)}
             self.assertEqual(paths, {"mine.py"})
         finally:
@@ -146,7 +146,7 @@ class FixtureRepoMixin:
     """Creates a small multi-file Python project for e2e tests."""
 
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="codemap_test_"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="lotsman_test_"))
         (self.tmp / "pkg").mkdir()
         (self.tmp / "pkg" / "core.py").write_text(
             "class Engine:\n"
@@ -304,7 +304,7 @@ class TestSearchModes(FixtureRepoMixin, unittest.TestCase):
 
 class TestImpact(FixtureRepoMixin, unittest.TestCase):
     def test_explicit_files(self):
-        from codemap import impact
+        from lotsman import impact
         out = impact.generate_impact(self.store, ["pkg/core.py"])
         self.assertIn("pkg/core.py:", out)
         # app.py uses Engine/start_engine/prepare_fuel from core.py
@@ -315,7 +315,7 @@ class TestImpact(FixtureRepoMixin, unittest.TestCase):
         self.assertNotIn("main.py —", out)
 
     def test_mtime_detection_no_git(self):
-        from codemap import impact
+        from lotsman import impact
         changed, method = impact.detect_changed(self.tmp, self.store,
                                                 since_hours=1.0)
         self.assertIn("mtime", method)  # fixture dir is not a git repo
@@ -323,30 +323,30 @@ class TestImpact(FixtureRepoMixin, unittest.TestCase):
                          {"pkg/core.py", "pkg/app.py", "main.py"})
 
     def test_no_dependents(self):
-        from codemap import impact
+        from lotsman import impact
         out = impact.generate_impact(self.store, ["main.py"])
         self.assertIn("Impacted files: none", out)
 
     def test_budget_truncation(self):
-        from codemap import impact
+        from lotsman import impact
         out = impact.generate_impact(self.store, ["pkg/core.py"], budget=10)
         self.assertIn("truncated by budget", out)
 
 
 class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
     def _handle(self, server, msg):
-        from codemap.mcp_server import McpServer  # noqa: F401
+        from lotsman.mcp_server import McpServer  # noqa: F401
         return server.handle(msg)
 
     def test_protocol_flow(self):
-        from codemap.mcp_server import McpServer
+        from lotsman.mcp_server import McpServer
         server = McpServer(self.tmp)
         server.store = self.store  # reuse fixture store
 
         init = server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize",
                               "params": {"protocolVersion": "2025-01-01"}})
         self.assertEqual(init["result"]["protocolVersion"], "2025-01-01")
-        self.assertEqual(init["result"]["serverInfo"]["name"], "codemap")
+        self.assertEqual(init["result"]["serverInfo"]["name"], "lotsman")
 
         self.assertIsNone(server.handle(
             {"jsonrpc": "2.0", "method": "notifications/initialized"}))
@@ -369,7 +369,7 @@ class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("referenced by:", refs["result"]["content"][0]["text"])
 
     def test_errors(self):
-        from codemap.mcp_server import McpServer
+        from lotsman.mcp_server import McpServer
         server = McpServer(self.tmp)
         server.store = self.store
 
@@ -396,7 +396,7 @@ class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
              "params": {"name": "defs", "arguments": {"name": "Engine"}}},
         ]) + "\n"
         proc = subprocess.run(
-            [sys.executable, "-m", "codemap", "--repo", str(self.tmp), "mcp"],
+            [sys.executable, "-m", "lotsman", "--repo", str(self.tmp), "mcp"],
             input=msgs, capture_output=True, text=True, timeout=120,
             cwd=Path(__file__).resolve().parent.parent)
         lines = [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
@@ -407,7 +407,7 @@ class TestMcpServer(FixtureRepoMixin, unittest.TestCase):
 
 class TestCLI(FixtureRepoMixin, unittest.TestCase):
     def test_cli_commands_run(self):
-        from codemap.cli import main
+        from lotsman.cli import main
         import contextlib, io
         for argv in (
             ["--repo", str(self.tmp), "index"],

@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 
-from codemap.textutil import is_well_named
+from lotsman.textutil import is_well_named
 
 DAMPING = 0.85
 MAX_ITER = 60

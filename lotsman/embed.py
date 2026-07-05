@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from codemap.store import Store, SymbolRow
+from lotsman.store import Store, SymbolRow
 
 DEFAULT_MODEL = "minishlab/potion-base-8M"
 BATCH_SIZE = 4096
@@ -20,7 +20,7 @@ def _load_model():
     try:
         from model2vec import StaticModel
         return StaticModel.from_pretrained(
-            os.environ.get("CODEMAP_EMBED_MODEL", DEFAULT_MODEL))
+            os.environ.get("LOTSMAN_EMBED_MODEL", DEFAULT_MODEL))
     except Exception:
         return None
 

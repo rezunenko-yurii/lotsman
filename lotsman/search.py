@@ -7,9 +7,9 @@ import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from codemap import embed
-from codemap.store import Store, SymbolRow
-from codemap.textutil import split_ident, tokenize
+from lotsman import embed
+from lotsman.store import Store, SymbolRow
+from lotsman.textutil import split_ident, tokenize
 
 K1 = 1.5
 B = 0.75

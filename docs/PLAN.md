@@ -1,7 +1,7 @@
-# CodeMap — план реализации
+# Lotsman — план реализации
 
 ## Этап 0. Каркас
-- [x] 0.1 Структура проекта, `pyproject.toml`, пакет `codemap/`
+- [x] 0.1 Структура проекта, `pyproject.toml`, пакет `lotsman/`
 - [x] 0.2 `textutil.py` — оценка токенов (chars/4), разбиение идентификаторов
       (camelCase/snake_case → подтокены), стоп-слова языков
 
@@ -34,7 +34,7 @@
 ## Этап 5. Проверка
 - [x] 5.1 Юнит-тесты (unittest, без внешних зависимостей): textutil, extract,
       graph/pagerank, bm25, end-to-end на фикстурном мини-репо
-- [x] 5.2 Self-index: прогнать CodeMap на самом себе
+- [x] 5.2 Self-index: прогнать Lotsman на самом себе
 - [x] 5.3 Полевая проверка на реальном стороннем репозитории (~сотни файлов):
       время индексации, повторной индексации, качество map и search
 - [x] 5.4 README.md: установка, команды, **политика использования агентом**
@@ -71,13 +71,13 @@
 - [x] 10.1 `mcp_server.py` — stdio JSON-RPC (initialize / tools/list / tools/call,
       протокол MCP), stdlib-only; инструменты map / search / outline / defs / refs
       с JSON-схемами и лимитами вывода
-- [x] 10.2 CLI-подкоманда `codemap mcp`; пример `.mcp.json`
+- [x] 10.2 CLI-подкоманда `lotsman mcp`; пример `.mcp.json`
 - [x] 10.3 E2E-тест: скармливаем серверу последовательность JSON-RPC сообщений,
       проверяем handshake, список инструментов и результат вызова
 
 ## Этап 11 (v3). Боевое подключение
-- [x] 11.1 CLAUDE.md в codemap (dogfood: агент, работающий над codemap, использует
-      codemap) + политика в CLAUDE.md реального проекта
+- [x] 11.1 CLAUDE.md в lotsman (dogfood: агент, работающий над lotsman, использует
+      lotsman) + политика в CLAUDE.md реального проекта
 - [x] 11.2 Сценарий «агентская задача» на Django-индексе: map → search → outline →
       refs → точечное чтение; сравнение стоимости с чтением файлов целиком
 - [x] 11.3 Обновление README (MCP, кэш), финальный прогон, коммит
@@ -87,17 +87,17 @@
 - [x] 12.2 Точные C#-ссылки: REF-запрос (вызовы, new, наследование, атрибуты,
       generic-типы, типы полей/параметров) + property/constructor в DEF;
       bump INDEX_VERSION → 3
-- [x] 12.3 `.codemapignore` (gitignore-lite) — исключение вендорного кода;
+- [x] 12.3 `.lotsmanignore` (gitignore-lite) — исключение вендорного кода;
       автофильтр минифицированных/сгенерированных файлов (строки > 1000 симв.)
 - [x] 12.4 Индексация Assets (2008 C#), проверка map/search/refs на своём коде
       (ExFramework: StateMachine, ExDi, Logging); регрессия эталона Django — ок
 - [x] 12.5 CLAUDE.md + .mcp.json в корне SDK-Kitchen-V3 (вне Assets — Unity
-      не импортирует), `.codemapignore` в Assets
+      не импортирует), `.lotsmanignore` в Assets
 
 ## Этап 13 (v3.2). Карта диффа и автоинъекция
 - [x] 13.1 `impact.py` — изменённые файлы (явно / git status / mtime-окно для
       Plastic) + зависимые файлы, ранжированные по использованию; токен-бюджет
-- [x] 13.2 CLI `codemap impact` + MCP-инструмент `impact`
+- [x] 13.2 CLI `lotsman impact` + MCP-инструмент `impact`
 - [x] 13.3 SessionStart-хук в SDK-Kitchen-V3 (`.claude/settings.json`):
       карта проекта инъецируется в контекст при старте сессии (~0.3 с)
 - [x] 13.4 Тесты impact (явные файлы, mtime-детект, «нет зависимых», бюджет);

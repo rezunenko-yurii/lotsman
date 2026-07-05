@@ -7,10 +7,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from codemap import extract, scanner
-from codemap.store import Store
+from lotsman import extract, scanner
+from lotsman.store import Store
 
-DB_RELPATH = ".codemap/index.db"
+DB_RELPATH = ".lotsman/index.db"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
 INDEX_VERSION = "3"
@@ -95,7 +95,7 @@ def index_repo(root: Path, store: Store) -> IndexResult:
         result.removed = len(gone)
 
     store.commit()
-    if result.removed > 200:  # reclaim space after mass removals (.codemapignore edits)
+    if result.removed > 200:  # reclaim space after mass removals (.lotsmanignore edits)
         store.conn.execute("VACUUM")
     result.seconds = time.monotonic() - t0
     return result

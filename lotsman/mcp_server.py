@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) stdio server: exposes codemap to AI agents as
+"""MCP (Model Context Protocol) stdio server: exposes lotsman to AI agents as
 typed tools instead of shell commands. stdlib-only JSON-RPC implementation —
 newline-delimited JSON over stdin/stdout, protocol subset: initialize,
 tools/list, tools/call, ping.
@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from codemap import __version__, embed, indexer, repomap, search as search_mod
+from lotsman import __version__, embed, indexer, repomap, search as search_mod
 
 PROTOCOL_VERSION = "2024-11-05"
 REFRESH_INTERVAL = 10.0  # seconds between incremental reindex checks
@@ -164,7 +164,7 @@ class McpServer:
             f"{r.path}:{r.line}  [{r.kind}] {r.signature}" for r in rows)
 
     def _tool_impact(self, args: dict) -> str:
-        from codemap import impact
+        from lotsman import impact
         files = list(args.get("files") or [])
         if files:
             changed, method = files, "explicit"
@@ -204,7 +204,7 @@ class McpServer:
                 "protocolVersion": msg.get("params", {}).get(
                     "protocolVersion", PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "codemap", "version": __version__},
+                "serverInfo": {"name": "lotsman", "version": __version__},
             })
         if method in ("notifications/initialized", "notifications/cancelled"):
             return None  # notifications get no response

@@ -1,4 +1,4 @@
-"""CLI: codemap index | map | search | outline | defs | refs | stats."""
+"""CLI: lotsman index | map | search | outline | defs | refs | stats."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from codemap import embed, indexer, repomap, search as search_mod
-from codemap.store import Store
+from lotsman import embed, indexer, repomap, search as search_mod
+from lotsman.store import Store
 
 
 def _root(args) -> Path:
@@ -24,10 +24,10 @@ def _open(root: Path, auto_index: bool = True) -> Store:
     db = root / indexer.DB_RELPATH
     if not db.exists():
         if not auto_index:
-            sys.exit("error: no index found — run `codemap index` first")
+            sys.exit("error: no index found — run `lotsman index` first")
         store = Store(db)
         res = indexer.index_repo(root, store)
-        print(f"[codemap] first-time index: {res.added} files in {res.seconds:.1f}s",
+        print(f"[lotsman] first-time index: {res.added} files in {res.seconds:.1f}s",
               file=sys.stderr)
         return store
     return Store(db)
@@ -42,10 +42,10 @@ def cmd_index(args) -> int:
         t0 = time.monotonic()
         embedded = embed.embed_missing(store)
         if embedded:
-            print(f"[codemap] embedded {embedded} symbols in "
+            print(f"[lotsman] embedded {embedded} symbols in "
                   f"{time.monotonic() - t0:.1f}s", file=sys.stderr)
         elif not embed.available():
-            print("[codemap] embeddings unavailable (pip install model2vec) — "
+            print("[lotsman] embeddings unavailable (pip install model2vec) — "
                   "search will use BM25 only", file=sys.stderr)
     stats = store.stats()
     store.close()
@@ -72,7 +72,7 @@ def cmd_map(args) -> int:
                                mentions=mentions)
     store.close()
     print(out, end="")
-    print(f"[codemap] map in {time.monotonic() - t0:.2f}s", file=sys.stderr)
+    print(f"[lotsman] map in {time.monotonic() - t0:.2f}s", file=sys.stderr)
     return 0
 
 
@@ -92,7 +92,7 @@ def cmd_search(args) -> int:
         for h in hits:
             print(f"{h.score:6.2f}  {h.symbol.path}:{h.symbol.line}  "
                   f"[{h.symbol.kind}] {h.symbol.signature}")
-    print(f"[codemap] search in {time.monotonic() - t0:.2f}s", file=sys.stderr)
+    print(f"[lotsman] search in {time.monotonic() - t0:.2f}s", file=sys.stderr)
     return 0
 
 
@@ -158,7 +158,7 @@ def cmd_refs(args) -> int:
 
 
 def cmd_impact(args) -> int:
-    from codemap import impact
+    from lotsman import impact
     root = _root(args)
     store = _open(root)
     indexer.index_repo(root, store)  # impact must see the current disk state
@@ -169,12 +169,12 @@ def cmd_impact(args) -> int:
     out = impact.generate_impact(store, changed, budget=args.budget)
     store.close()
     print(out, end="")
-    print(f"[codemap] impact via {method}", file=sys.stderr)
+    print(f"[lotsman] impact via {method}", file=sys.stderr)
     return 0
 
 
 def cmd_mcp(args) -> int:
-    from codemap.mcp_server import serve
+    from lotsman.mcp_server import serve
     return serve(_root(args))
 
 
@@ -189,7 +189,7 @@ def cmd_stats(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
-        prog="codemap",
+        prog="lotsman",
         description="Local codebase index for AI agents: repo map, symbol "
                     "search, reference graph.")
     p.add_argument("--repo", default=".", help="repository root (default: cwd)")

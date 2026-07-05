@@ -8,7 +8,7 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 
-from codemap.textutil import IDENT_RE, STOPWORDS
+from lotsman.textutil import IDENT_RE, STOPWORDS
 
 MAX_IDENTS_PER_FILE = 2000
 SIGNATURE_MAX_LEN = 120

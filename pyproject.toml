@@ -1,5 +1,5 @@
 [project]
-name = "codemap"
+name = "lotsman"
 version = "1.0.0"
 description = "Local codebase index for AI agents: PageRank repo map, hybrid symbol search, reference graph, impact analysis, MCP server"
 readme = "README.md"
@@ -26,11 +26,11 @@ dependencies = [
 embeddings = ["model2vec>=0.3"]
 
 [project.scripts]
-codemap = "codemap.cli:main"
+lotsman = "lotsman.cli:main"
 
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["codemap*"]
+include = ["lotsman*"]

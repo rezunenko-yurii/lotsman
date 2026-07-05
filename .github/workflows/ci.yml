@@ -24,6 +24,6 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Smoke: self-index
         run: |
-          codemap index
-          codemap map --budget 400
-          codemap search "pagerank power iteration" -k 3
+          lotsman index
+          lotsman map --budget 400
+          lotsman search "pagerank power iteration" -k 3

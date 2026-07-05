@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "codemap": {
+    "lotsman": {
       "command": "python3",
-      "args": ["-m", "codemap", "--repo", ".", "mcp"]
+      "args": ["-m", "lotsman", "--repo", ".", "mcp"]
     }
   }
 }

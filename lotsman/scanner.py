@@ -38,7 +38,7 @@ LANG_BY_EXT = {
 }
 
 SKIP_DIRS = frozenset({
-    ".git", ".hg", ".svn", ".codemap", "node_modules", "__pycache__",
+    ".git", ".hg", ".svn", ".lotsman", "node_modules", "__pycache__",
     ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
     "dist", "build", "target", ".next", ".nuxt", "vendor", ".idea", ".vscode",
     "coverage", ".cache", "eggs", ".eggs",
@@ -46,7 +46,7 @@ SKIP_DIRS = frozenset({
 
 MAX_FILE_SIZE = 1_000_000  # skip generated/bundled monsters
 
-IGNORE_FILE = ".codemapignore"
+IGNORE_FILE = ".lotsmanignore"
 
 
 def load_ignore_patterns(root: Path) -> list[str]:

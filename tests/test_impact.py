@@ -1,7 +1,7 @@
 import unittest
 
 from helpers import FixtureRepoMixin
-from lotsman import impact
+from lotsman import impact, indexer
 
 
 class TestImpact(FixtureRepoMixin, unittest.TestCase):
@@ -36,6 +36,16 @@ class TestImpact(FixtureRepoMixin, unittest.TestCase):
     def test_budget_truncation(self):
         out = impact.generate_impact(self.store, ["pkg/core.py"], budget=10)
         self.assertIn("truncated by budget", out)
+
+    def test_impact_tests_only_filters_non_tests(self):
+        (self.tmp / "pkg" / "test_core.py").write_text(
+            "from pkg.core import prepare_fuel\n\ndef test_fuel():\n    prepare_fuel()\n")
+        (self.tmp / "pkg" / "consumer.py").write_text(
+            "from pkg.core import prepare_fuel\nprepare_fuel()\n")
+        indexer.index_repo(self.tmp, self.store)
+        out = impact.generate_impact(self.store, ["pkg/core.py"], tests_only=True)
+        self.assertIn("test_core.py", out)
+        self.assertNotIn("consumer.py", out)
 
 
 if __name__ == "__main__":

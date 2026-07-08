@@ -64,6 +64,12 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
+def is_test_path(path: str) -> bool:
+    parts = path.lower().split("/")
+    return any(p in ("tests", "test", "__tests__", "spec") for p in parts[:-1]) \
+        or parts[-1].startswith("test_") or parts[-1].endswith("_test.py")
+
+
 def is_well_named(name: str) -> bool:
     """Long descriptive identifiers (snake_case/camelCase, >=8 chars) — likely
     project-specific, deserve extra graph weight."""

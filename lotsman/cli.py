@@ -193,7 +193,8 @@ def cmd_impact(args) -> int:
         changed, method = list(args.files), "explicit"
     else:
         changed, method = impact.detect_changed(root, store, args.since)
-    out = impact.generate_impact(store, changed, budget=args.budget)
+    out = impact.generate_impact(store, changed, budget=args.budget,
+                                 tests_only=args.tests)
     store.close()
     print(out, end="")
     print(f"[lotsman] impact via {method}", file=sys.stderr)
@@ -316,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="hours for mtime-based detection when not a git repo "
                          "(default 24)")
     sp.add_argument("--budget", type=int, default=1500)
+    sp.add_argument("--tests", action="store_true",
+                    help="show only impacted test files")
     sp.set_defaults(fn=cmd_impact)
 
     sp = sub.add_parser("mcp", help="run MCP stdio server (tools: map, search, "

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from lotsman import embed
 from lotsman.store import Store, SymbolRow
-from lotsman.textutil import split_ident, tokenize
+from lotsman.textutil import is_test_path, split_ident, tokenize
 
 K1 = 1.5
 B = 0.75
@@ -108,12 +108,7 @@ def _rrf(ranked_lists: list[list[Hit]], limit: int) -> list[Hit]:
 
 
 TEST_PATH_DEMOTION = 0.6
-
-
-def _is_test_path(path: str) -> bool:
-    parts = path.lower().split("/")
-    return any(p in ("tests", "test", "__tests__", "spec") for p in parts[:-1]) \
-        or parts[-1].startswith("test_") or parts[-1].endswith("_test.py")
+_is_test_path = is_test_path
 
 
 def _polish(hits: list[Hit], limit: int) -> list[Hit]:

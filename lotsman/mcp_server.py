@@ -114,6 +114,8 @@ TOOLS = [
                 "budget": {"type": "integer",
                            "description": "token budget for the report "
                                           "(default 1500; raise if truncated)"},
+                "tests": {"type": "boolean",
+                          "description": "show only impacted test files"},
             },
         },
     },
@@ -195,7 +197,9 @@ class McpServer:
                 self.root, self.store,
                 float(args.get("since_hours") or impact.DEFAULT_SINCE_HOURS))
         budget = int(args.get("budget") or impact.DEFAULT_BUDGET)
-        return (impact.generate_impact(self.store, changed, budget=budget)
+        tests = bool(args.get("tests"))
+        return (impact.generate_impact(self.store, changed, budget=budget,
+                                       tests_only=tests)
                 + f"\n(change detection: {method})")
 
     def _tool_refs(self, args: dict) -> str:

@@ -220,9 +220,21 @@ def _write_skill(path: Path, text: str) -> str:
     return status
 
 
-def run_init(root: Path, agents: list[str], no_index: bool = False) -> int:
+def _detect_agents(root: Path) -> list[str]:
+    agents = []
+    if (root / ".claude" / "skills" / "lotsman-navigation" / "SKILL.md").exists():
+        agents.append("claude")
+    if (root / ".codex" / "skills" / "lotsman-navigation" / "SKILL.md").exists():
+        agents.append("codex")
+    if (root / ".cursor" / "mcp.json").exists():
+        agents.append("cursor")
+    return agents
+
+
+def run_init(root: Path, agents: list[str], no_index: bool = False,
+             label: str = "init") -> int:
     cmd, argv, env = _invocation()
-    say = lambda s: print(f"[init] {s}")  # noqa: E731
+    say = lambda s: print(f"[{label}] {s}")  # noqa: E731
 
     say(f"policy in AGENTS.md: {_upsert_policy(root / 'AGENTS.md', cmd)}")
     if _ensure_lotsmanignore(root):
@@ -265,3 +277,15 @@ def run_init(root: Path, agents: list[str], no_index: bool = False) -> int:
             "rank cache warmed")
     say("done — try: " + cmd + " map --budget 1500")
     return 0
+
+
+def run_update(root: Path, agents: list[str] | None = None,
+               no_index: bool = False) -> int:
+    selected = list(agents) if agents is not None else _detect_agents(root)
+    if agents is None:
+        if selected:
+            print(f"[update] detected agents: {', '.join(selected)}")
+        else:
+            print("[update] no existing agent-specific artifacts detected; "
+                  "pass --agent to add one")
+    return run_init(root, agents=selected, no_index=no_index, label="update")

@@ -4,7 +4,7 @@ import json
 import unittest
 
 from helpers import FixtureRepoMixin
-from lotsman.init_cmd import MARK_BEGIN, MARK_END, run_init
+from lotsman.init_cmd import MARK_BEGIN, MARK_END, run_init, run_update
 
 
 class TestInit(FixtureRepoMixin, unittest.TestCase):
@@ -12,6 +12,16 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             code = run_init(self.tmp, agents=list(agents), no_index=no_index)
+        self.assertEqual(code, 0)
+        return buf.getvalue()
+
+    def _update(self, agents=None, no_index=True) -> str:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = run_update(
+                self.tmp,
+                agents=None if agents is None else list(agents),
+                no_index=no_index)
         self.assertEqual(code, 0)
         return buf.getvalue()
 
@@ -105,6 +115,24 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
                 store.load_rank_cache(store.state_stamp()))
         finally:
             store.close()
+
+    def test_update_detects_and_refreshes_existing_codex_skill(self):
+        self._init(agents=["codex"])
+        skill = self.tmp / ".codex" / "skills" / "lotsman-navigation" / "SKILL.md"
+        skill.write_text("locally stale generated skill\n")
+
+        out = self._update()
+
+        self.assertIn("detected agents: codex", out)
+        self.assertIn("codex: lotsman-navigation skill refreshed", out)
+        self.assertIn("AI coding agent", skill.read_text())
+
+    def test_update_without_agent_artifacts_only_refreshes_universal_files(self):
+        out = self._update()
+
+        self.assertIn("no existing agent-specific artifacts detected", out)
+        self.assertTrue((self.tmp / "AGENTS.md").exists())
+        self.assertFalse((self.tmp / ".codex").exists())
 
 
 if __name__ == "__main__":

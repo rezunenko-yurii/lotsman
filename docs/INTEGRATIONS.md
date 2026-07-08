@@ -67,6 +67,11 @@ slices, affected-test candidates, and honest name-based impact checks. The file
 is local to the project and intentionally describes the workflow, not one model
 persona.
 
+After upgrading Lotsman, run `lotsman update --agent codex --no-index` in a
+project to refresh the generated skill and AGENTS.md policy without rebuilding
+the index. Run plain `lotsman update` when you also want the local index and
+warm map cache refreshed.
+
 For MCP tools, register **once, globally** (Codex reads `~/.codex/config.toml`;
 project-local `.codex/` files are not picked up):
 

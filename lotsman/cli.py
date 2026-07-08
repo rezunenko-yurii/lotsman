@@ -211,6 +211,12 @@ def cmd_init(args) -> int:
                     no_index=args.no_index)
 
 
+def cmd_update(args) -> int:
+    from lotsman.init_cmd import run_update
+    return run_update(_root(args), agents=args.agent,
+                      no_index=args.no_index)
+
+
 def cmd_doctor(args) -> int:
     from lotsman.doctor import run_doctor
     return run_doctor(_root(args), as_json=args.json,
@@ -256,6 +262,17 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--no-index", action="store_true",
                     help="skip the initial index/warm-up")
     sp.set_defaults(fn=cmd_init)
+
+    sp = sub.add_parser("update", help="refresh managed agent artifacts and "
+                                       "the project index after lotsman or "
+                                       "source changes")
+    sp.add_argument("--agent", action="append",
+                    choices=["claude", "codex", "cursor"],
+                    help="refresh/add this agent-specific config (repeatable); "
+                         "default: auto-detect existing artifacts")
+    sp.add_argument("--no-index", action="store_true",
+                    help="refresh generated artifacts only")
+    sp.set_defaults(fn=cmd_update)
 
     sp = sub.add_parser("index", help="build/update the index incrementally")
     sp.add_argument("--json", action="store_true")

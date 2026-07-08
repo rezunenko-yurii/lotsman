@@ -37,6 +37,7 @@ class TestCLI(FixtureRepoMixin, unittest.TestCase):
         for argv in (
             ["--repo", str(self.tmp), "index"],
             ["--repo", str(self.tmp), "index", "--verify", "--no-embed"],
+            ["--repo", str(self.tmp), "update", "--no-index"],
             ["--repo", str(self.tmp), "map", "--budget", "256"],
             ["--repo", str(self.tmp), "search", "engine", "--json"],
             ["--repo", str(self.tmp), "outline", "pkg/core.py"],

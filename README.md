@@ -26,6 +26,7 @@ candidates to inspect; it does not prove complete semantic truth.
 - [What Changed In 1.5](#what-changed-in-15)
 - [Quick Start](#quick-start)
 - [Daily Workflow](#daily-workflow)
+- [Updating Lotsman And Generated Agent Files](#updating-lotsman-and-generated-agent-files)
 - [Tiny Example](#tiny-example)
 - [What Comes Back](#what-comes-back)
 - [How It Differs From Grep, LSP, And Ctags](#how-it-differs-from-grep-lsp-and-ctags)
@@ -151,6 +152,49 @@ The agent pattern is:
 ```text
 map/search -> outline/slice -> read only the relevant lines -> edit -> impact/tests/report
 ```
+
+## Updating Lotsman And Generated Agent Files
+
+There are two things to keep fresh:
+
+1. **The index** in `.lotsman/index.db`, which reflects your project source.
+2. **Generated agent files**, such as `AGENTS.md` managed blocks and
+   `.codex/skills/lotsman-navigation/SKILL.md`, which reflect the installed
+   Lotsman version.
+
+When only project source changed, the normal read commands auto-refresh
+incrementally, and this is enough:
+
+```bash
+lotsman index
+```
+
+When Lotsman itself was upgraded, or you want the latest generated skills and
+agent policy, run:
+
+```bash
+lotsman update
+```
+
+`update` auto-detects existing supported agent artifacts and refreshes them.
+It also updates the index and warms the map cache, like `init`.
+
+Use `--no-index` when you only want generated files:
+
+```bash
+lotsman update --no-index
+```
+
+Use `--agent` when adding or forcing one integration:
+
+```bash
+lotsman update --agent codex --no-index
+```
+
+Generated skill files are treated as managed artifacts: if Lotsman ships a new
+template, `update` replaces the old generated file. Put project-specific
+navigation rules in `AGENTS.md` outside the Lotsman managed block, or in your
+own separate skill, if you need local custom behavior to survive updates.
 
 ## Tiny Example
 
@@ -377,6 +421,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | Command | Purpose |
 |---|---|
 | `lotsman init [--agent codex|claude|cursor] [--no-index]` | set up agent policy, ignore skeleton, MCP hints, first index |
+| `lotsman update [--agent codex|claude|cursor] [--no-index]` | refresh managed agent artifacts and the index after Lotsman or source changes |
 | `lotsman index [--verify] [--no-embed]` | build/update the index |
 | `lotsman map [--budget N] [--focus F] [--mention X]` | return a token-budgeted repo map |
 | `lotsman search "query" [--mode auto|hybrid|bm25|vector]` | find likely symbols/files by meaning/name |

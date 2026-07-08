@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **`lotsman update`** — explicit maintenance command for refreshing managed
+  agent artifacts and the local index after upgrading Lotsman or changing
+  project source. Without `--agent`, it auto-detects existing supported agent
+  files; use `--agent` to add or force a specific integration.
+
 ## 1.5.0 — 2026-07-08
 
 Sharper release gates for real agent workflows: narrower reads, more honest

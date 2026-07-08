@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.0 — 2026-07-08
+
+Sharper release gates for real agent workflows: narrower reads, more honest
+reference lookup, and better escape hatches for DI-heavy repos.
+
+- **`lotsman slice`** — body-plus-skeleton retrieval for one symbol, available
+  through both CLI and MCP, so agents can inspect the useful code without
+  dragging a whole file into context.
+- **Qualified `refs`** — `refs Class.Method` narrows same-named methods across
+  classes, reducing the classic "every `render` looks the same" ambiguity while
+  keeping the heuristic contract honest.
+- **Wiring patterns** — integration docs now show how to seed DI-heavy or
+  reflection-heavy repositories with `wiring.json` so config-only edges can be
+  surfaced as candidates instead of vanishing from the map.
+- **`impact --tests`** — impact output can surface likely test files alongside
+  affected code, turning the heuristic blast radius into a quicker re-check
+  shortlist after edits.
+- **Opt-in query telemetry + `report`** — `LOTSMAN_QUERYLOG=1` records command
+  usage, and `lotsman report` turns that local log into a human-readable
+  workflow summary for tuning prompts, habits, and release gates.
+
 ## 1.4.0 — 2026-07-05
 
 Onboarding and multi-agent support: from "clone, read, wire configs by hand"

@@ -116,14 +116,16 @@ Start small. Widen only when the task needs it.
 | Where is behavior X implemented? | `lotsman search "validate unique fields model"` |
 | What is inside this file? | `lotsman outline path/to/file.py` |
 | Where is this symbol defined? | `lotsman defs SomeName` |
-| Who probably uses it? | `lotsman refs SomeName` |
-| What might my edit affect? | `lotsman impact path/to/changed_file.py` |
+| Who probably uses this class method? | `lotsman refs CheckoutService.refund` |
+| Read one symbol body without the whole file? | `lotsman slice billing/refunds.py refund` |
+| What might my edit affect, including tests? | `lotsman impact path/to/changed_file.py --tests` |
+| What have we actually been asking Lotsman? | `lotsman report` |
 | Is the environment/index healthy? | `lotsman doctor` |
 
 The agent pattern is:
 
 ```text
-map/search -> outline -> read only the relevant lines -> edit -> impact/tests
+map/search -> outline/slice -> read only the relevant lines -> edit -> impact/tests/report
 ```
 
 ## Tiny Example
@@ -251,7 +253,8 @@ What stays heuristic:
 - `refs` and `impact` match by names across the shared index; they do not prove
   real cross-language runtime links;
 - generated bindings, serialized scene/prefab references, reflection, DI and
-  config-driven wiring may be invisible;
+  config-driven wiring may be invisible unless you seed stable names through
+  `wiring.json` as described in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md);
 - cross-repository contracts are out of scope unless the code is in the same
   indexed repo.
 
@@ -344,10 +347,12 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman map [--budget N] [--focus F] [--mention X]` | return a token-budgeted repo map |
 | `lotsman search "query" [--mode auto|hybrid|bm25|vector]` | find likely symbols/files by meaning/name |
 | `lotsman outline FILE` | show symbol ranges in one file |
+| `lotsman slice FILE TARGET` | return one symbol body plus surrounding file skeleton |
 | `lotsman defs NAME` | show definitions of a symbol |
-| `lotsman refs NAME` | show name-based reference candidates |
-| `lotsman impact [FILES...] [--since H]` | show changed symbols and likely affected files |
+| `lotsman refs NAME` | show name-based reference candidates; `Class.Method` narrows method lookups |
+| `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
+| `lotsman report` | summarize opt-in query telemetry from the local query log |
 | `lotsman stats` | show index statistics |
 | `lotsman mcp` | run the MCP stdio server |
 
@@ -362,7 +367,9 @@ Freshness:
 - `refs` and `impact` are name-based heuristics, not type-resolved proof.
 - Same-named methods across classes can blur together.
 - PHP references are lexical today.
-- Reflection, DI, generated code and serialized scene references can be missed.
+- Reflection, DI, generated code and serialized scene references can be missed;
+  add `.lotsman/wiring.json` patterns when the repo encodes important edges in
+  config.
 - Static embeddings help with related vocabulary, not deep semantic reasoning.
 - One repo means one index; cross-repository references are out of scope.
 - The mtime/size fast path can miss a change that preserves both; use

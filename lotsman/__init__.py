@@ -1,3 +1,3 @@
 """Lotsman: local codebase index for AI agents."""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"

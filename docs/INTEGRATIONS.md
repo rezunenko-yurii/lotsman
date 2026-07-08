@@ -111,3 +111,40 @@ for scripting.
    make CLAUDE.md a one-line `@AGENTS.md` import. Duplicated policies drift.
 8. **Monorepos:** index components separately (`lotsman --repo services/api`)
    — tighter maps, cheaper personalization, independent caches.
+
+## Wiring patterns for DI-heavy repos
+
+Some repositories hide important edges in containers, registries, scene files,
+or config blobs. Lotsman stays honest about that limit, but you can recover a
+useful candidate set by seeding stable wiring names in `.lotsman/wiring.json`.
+
+The schema is a list of regex patterns. Each regex must contain exactly one
+capture group; the captured text becomes the identifier Lotsman injects into
+the candidate graph.
+
+Example for a Unity or service-container repo:
+
+```json
+{
+  "patterns": [
+    {
+      "regex": "Bind<(\\w+)>",
+      "why": "Container bindings point at service types even when the call site only mentions the DI API."
+    },
+    {
+      "regex": "GetNode\\(\"(\\w+)\"\\)",
+      "why": "Scene-node lookups hide runtime links behind string-based APIs."
+    }
+  ]
+}
+```
+
+Practical use:
+
+- make sure each regex has exactly one capture group, and that the captured
+  value matches real class, interface, or node names already present in
+  source;
+- add patterns only for wiring that materially changes navigation quality;
+- re-run `lotsman index` after changing `.lotsman/wiring.json` because config
+  changes rebuild the index before the new edges appear in `map`, `refs`, or
+  `impact`.

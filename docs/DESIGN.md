@@ -99,3 +99,6 @@ the default map must surface `cached_property`, `ValidationError`,
 - **v1.1** — trust hardening after external review: Beta status, language
   regression fixtures (C#/TS/Go), `--verify` mode, reproducible benchmark
   harness, `doctor`, English docs.
+- **v1.5** — narrower retrieval and release evidence: `slice`, qualified
+  `refs`, wiring-pattern docs for DI-heavy repos, `impact --tests`, and opt-in
+  query telemetry with `report`.

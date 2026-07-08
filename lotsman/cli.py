@@ -9,8 +9,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from lotsman import (embed, indexer, refsview, repomap, search as search_mod,
-                     sliceview)
+from lotsman import (embed, indexer, querylog, refsview, repomap,
+                     search as search_mod, sliceview)
 from lotsman.store import Store
 
 
@@ -231,6 +231,11 @@ def cmd_stats(args) -> int:
     return 0
 
 
+def cmd_report(args) -> int:
+    print(querylog.summarize(_root(args)))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from lotsman import __version__
     p = argparse.ArgumentParser(
@@ -305,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
+
+    sp = sub.add_parser("report", help="summarize opt-in MCP query telemetry")
+    sp.set_defaults(fn=cmd_report)
 
     sp = sub.add_parser("doctor", help="environment and index health check")
     sp.add_argument("--json", action="store_true",

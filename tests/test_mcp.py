@@ -75,6 +75,37 @@ class TestMcpDispatch(FixtureRepoMixin, unittest.TestCase):
             "params": {"name": "outline", "arguments": {}}})
         self.assertTrue(broken["result"]["isError"])
 
+    def test_unknown_tool_call_is_logged_when_enabled(self):
+        server = self._server()
+        with mock.patch.dict("os.environ", {"LOTSMAN_QUERYLOG": "1"}):
+            bad_tool = server.handle({
+                "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                "params": {"name": "explode", "arguments": {"x": 1}}})
+        self.assertEqual(bad_tool["error"]["code"], -32602)
+        rows = [json.loads(line) for line in
+                (self.tmp / ".lotsman" / "querylog.jsonl")
+                .read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(rows[-1]["cmd"], "explode")
+        self.assertEqual(rows[-1]["args"], {"x": 1})
+        self.assertEqual(rows[-1]["size"], len("unknown tool: explode"))
+        self.assertFalse(rows[-1]["empty"])
+
+    def test_exception_result_is_logged_when_enabled(self):
+        server = self._server()
+        with mock.patch.dict("os.environ", {"LOTSMAN_QUERYLOG": "1"}):
+            broken = server.handle({
+                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": {"name": "outline", "arguments": {}}})
+        self.assertTrue(broken["result"]["isError"])
+        text = broken["result"]["content"][0]["text"]
+        rows = [json.loads(line) for line in
+                (self.tmp / ".lotsman" / "querylog.jsonl")
+                .read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(rows[-1]["cmd"], "outline")
+        self.assertEqual(rows[-1]["args"], {})
+        self.assertEqual(rows[-1]["size"], len(text))
+        self.assertEqual(rows[-1]["empty"], text.startswith("("))
+
     def test_output_truncation(self):
         server = self._server()
         with mock.patch("lotsman.mcp_server.MAX_OUTPUT_CHARS", 40):

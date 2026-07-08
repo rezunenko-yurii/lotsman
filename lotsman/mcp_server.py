@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from lotsman import (__version__, embed, indexer, refsview, repomap,
+from lotsman import (__version__, embed, indexer, querylog, refsview, repomap,
                      search as search_mod, sliceview)
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -243,15 +243,20 @@ class McpServer:
             "impact": self._tool_impact,
         }.get(name)
         if fn is None:
+            text = f"unknown tool: {name}"
+            querylog.log(self.root, name or "?", args, text)
             return self._error(msg_id, -32602, f"unknown tool: {name}")
         try:
             self._refresh()
             text = fn(args)
         except Exception as e:
+            text = f"{type(e).__name__}: {e}"
+            querylog.log(self.root, name or "?", args, text)
             return self._result(msg_id, {
-                "content": [{"type": "text", "text": f"{type(e).__name__}: {e}"}],
+                "content": [{"type": "text", "text": text}],
                 "isError": True,
             })
+        querylog.log(self.root, name, args, text)
         if len(text) > MAX_OUTPUT_CHARS:
             text = text[:MAX_OUTPUT_CHARS] + "\n… (truncated)"
         return self._result(msg_id, {

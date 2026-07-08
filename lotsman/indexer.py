@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import extract, scanner
+from lotsman import extract, scanner, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -43,12 +43,21 @@ def open_store(root: Path) -> Store:
 def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
     """Incremental reindex. With verify=True the mtime+size fast path is
     disabled and every file is re-hashed — catches the (rare) case of content
-    changing without touching size or timestamp."""
+    changing without touching size or timestamp. Wiring config and index
+    version changes trigger a full wipe before scanning, which also rebuilds
+    derived rows like embeddings and rank cache on the next passes."""
     t0 = time.monotonic()
     result = IndexResult()
-    if store.get_meta("index_version") != INDEX_VERSION:
+    patterns, _ = wiring.load(root)
+    wiring_sha = wiring.config_sha(root)
+    stored_wiring_sha = store.get_meta("wiring_sha") or ""
+    version_changed = store.get_meta("index_version") != INDEX_VERSION
+    wiring_changed = (stored_wiring_sha != wiring_sha
+                      and (stored_wiring_sha or wiring_sha))
+    if version_changed or wiring_changed:
         store.wipe()
-        store.set_meta("index_version", INDEX_VERSION)
+    store.set_meta("index_version", INDEX_VERSION)
+    store.set_meta("wiring_sha", wiring_sha)
     records = scanner.scan(root)
     result.scanned = len(records)
     known = store.known_files()
@@ -81,6 +90,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
             else:
                 symbols = extract.extract_symbols(rec.lang, data)
                 idents = extract.extract_refs(rec.lang, data)
+                idents.update(wiring.apply(patterns, data))
         except Exception as e:  # a single bad file must not kill the index run
             result.errors.append(f"{rec.path}: {e}")
             continue

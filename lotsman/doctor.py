@@ -12,7 +12,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import embed, indexer, scanner
+from lotsman import embed, indexer, scanner, wiring
 from lotsman.extract import DEF_QUERIES, REF_QUERIES, _compile
 
 OK, WARN, FAIL = "ok", "warn", "fail"
@@ -128,6 +128,17 @@ def _check_change_detection(root: Path) -> Check:
     return Check("change_detection", OK, [note], {"method": method})
 
 
+def _check_wiring(root: Path) -> Check:
+    patterns, errors = wiring.load(root)
+    status = WARN if errors else OK
+    details = [f"wiring: {len(patterns)} patterns"]
+    details.extend(errors)
+    return Check("wiring", status, details, {
+        "patterns": len(patterns),
+        "errors": errors,
+    })
+
+
 def collect_checks(root: Path) -> list[Check]:
     return [
         _check_python(),
@@ -135,6 +146,7 @@ def collect_checks(root: Path) -> list[Check]:
         _check_embeddings(),
         _check_index(root),
         _check_ignore(root),
+        _check_wiring(root),
         _check_change_detection(root),
     ]
 

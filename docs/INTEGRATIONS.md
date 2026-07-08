@@ -61,9 +61,11 @@ with a warm rank cache) and never needs to ask for it.
 
 Codex reads `AGENTS.md` automatically — the policy channel needs nothing else.
 `lotsman init --agent codex` also writes
-`.codex/skills/lotsman-navigation/SKILL.md`, a Codex-native skill that teaches
-the deep-index / narrow-retrieval workflow and prefers MCP tools when
-available.
+`.codex/skills/lotsman-navigation/SKILL.md`, a Codex-format skill with
+agent-neutral Lotsman navigation rules: deep index, narrow retrieval, focused
+slices, affected-test candidates, and honest name-based impact checks. The file
+is local to the project and intentionally describes the workflow, not one model
+persona.
 
 For MCP tools, register **once, globally** (Codex reads `~/.codex/config.toml`;
 project-local `.codex/` files are not picked up):

@@ -84,6 +84,10 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         text = skill.read_text()
         self.assertIn("name: lotsman-navigation", text)
         self.assertIn("Deep local index, narrow retrieval", text)
+        self.assertIn("AI coding agent", text)
+        self.assertIn("slice FILE NAME", text)
+        self.assertIn("impact --tests", text)
+        self.assertNotIn("Use when Codex needs", text)
         self.assertNotIn("allowed-tools:", text)
 
     def test_cursor_config(self):

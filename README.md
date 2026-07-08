@@ -23,6 +23,7 @@ candidates to inspect; it does not prove complete semantic truth.
 - [Like You Are 5](#like-you-are-5)
 - [Why Agents Need It](#why-agents-need-it)
 - [Should You Use It?](#should-you-use-it)
+- [What Changed In 1.5](#what-changed-in-15)
 - [Quick Start](#quick-start)
 - [Daily Workflow](#daily-workflow)
 - [Tiny Example](#tiny-example)
@@ -81,6 +82,29 @@ left for reasoning about code.**
 
 Lotsman is best as an agent navigation layer. It complements grep, LSPs and
 tests; it does not replace them.
+
+## What Changed In 1.5
+
+v1.5 is the "read less after finding it" release. Earlier Lotsman was already
+good at pointing agents at the right file or symbol; this release makes the
+next step narrower and easier to audit.
+
+| Added / improved | What it changes for agents |
+|---|---|
+| `lotsman slice FILE NAME` | returns one symbol body plus a file skeleton, so the agent does not have to read the whole file after `outline` |
+| MCP `slice` tool | gives the same read-less workflow to MCP clients |
+| `refs Class.Method` | intersects names like `CheckoutService` and `refund`, reducing noise from same-named methods |
+| `.lotsman/wiring.json` | lets DI/reflection/config strings add candidate references with project-specific regex patterns |
+| `impact --tests` | filters impacted dependents down to likely test files when the agent needs a re-check shortlist |
+| `LOTSMAN_QUERYLOG=1` + `lotsman report` | records local MCP query patterns so teams can see what agents actually ask and where answers are empty |
+
+Measured profit: the existing corpus benchmarks still show **7x-51x
+navigation-token savings** on real repos, with all quality gates passing on
+v1.5. The headline ratios did not jump just because the version changed:
+the benchmark scenarios already modeled narrow reading. The v1.5 gain is that
+the narrow-read behavior is now a first-class command/tool (`slice`), refs can
+be focused, impacted tests can be shortlisted, DI blind spots can be mitigated,
+and query behavior can be measured locally.
 
 ## Quick Start
 
@@ -204,6 +228,16 @@ speedup guarantee.
 | Vite v5.4.11 | TypeScript monorepo | 14x |
 | Gin v1.10.0 | Go web framework | 7x |
 | ripgrep 14.1.1 | Rust workspace/CLI | 31x |
+
+Current v1.5 reference run, rerun on 2026-07-08:
+
+| Corpus | Cold index | Warm map | Search | Quality gates |
+|---|---:|---:|---:|---|
+| Django 5.2 | 3.79 s | 0.07 s | 0.54 s | PASS |
+| WordPress 7.0 | 2.12 s | 0.02 s | 0.13 s | PASS |
+| Vite v5.4.11 | 0.48 s | 0.00 s | 0.03 s | PASS |
+| Gin v1.10.0 | 0.16 s | 0.00 s | 0.01 s | PASS |
+| ripgrep 14.1.1 | 0.37 s | 0.00 s | 0.04 s | PASS |
 
 Live evidence: in a Claude Code session on a 2008-file Unity project, an agent
 answered an impact question with 4 lotsman calls and one 15-line file read.

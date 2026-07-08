@@ -52,7 +52,7 @@ IGNORE_SKELETON = """\
 CODEX_SKILL = """\
 ---
 name: lotsman-navigation
-description: Use when Codex needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, file inspection, definitions/references, impact analysis, or avoiding broad reads.
+description: Use when an AI coding agent needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, symbol/file inspection, definitions/references, impact analysis, affected-test selection, or avoiding broad reads.
 ---
 
 # Lotsman Navigation
@@ -63,8 +63,9 @@ Deep local index, narrow retrieval. Lotsman indexes the repo deeply in
 `.lotsman/index.db`, but the agent should request only the next useful slice.
 Do not confuse a larger `map --budget` with deeper indexing.
 
-Prefer MCP tools when available: `mcp__lotsman.map`, `search`, `outline`,
-`defs`, `refs`, and `impact`. Fall back to CLI commands when MCP is unavailable.
+Prefer MCP tools when available. Tool names vary by host: some agents expose
+plain `map/search/outline/...`, while others expose names like
+`mcp__lotsman__map`. Fall back to CLI commands when MCP is unavailable.
 
 ## Slice Selection
 
@@ -74,15 +75,19 @@ Prefer MCP tools when available: `mcp__lotsman.map`, `search`, `outline`,
 | Clear concept/domain/API | `map` with `mentions` / `--mention` |
 | Behavior or feature search | `search` before grep or broad reads |
 | Candidate file found | `outline`, then read only relevant ranges |
-| Symbol/API change | `refs` before editing |
+| One symbol matters | `slice FILE NAME` instead of reading the whole file |
+| Symbol/API change | `refs NAME`; use `refs Class.Method` for noisy method names |
 | File or batch change | `impact` before and after editing |
+| Need test candidates | `impact --tests` / MCP impact with `tests: true` |
+| Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `report` |
 | Need broader context | Increase map budget only with mention/focus |
 
 ## Rules
 
 - Start compact; widen only when the task demands it.
-- Read files only after `search` or `outline` makes them relevant.
+- Read files only after `search`, `outline`, or `slice` makes them relevant.
 - Treat `refs` and `impact` as name-based candidate lists, not proof.
+- Use `.lotsman/wiring.json` for project-specific DI/reflection/config names.
 - Use `doctor` or `index --verify` when freshness or environment health is in doubt.
 """
 

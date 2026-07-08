@@ -38,6 +38,25 @@ claims need repeated agent A/B runs: same task, same model, with/without
 Lotsman, measuring tool calls, files read, tokens, elapsed time, correctness,
 test choice, and whether the agent had to backtrack.
 
+## v1.5 reference run
+
+Rerun on 2026-07-08 with lotsman 1.5.0, Python 3.14 and the `[embeddings]`
+extra installed. All quality gates passed.
+
+| Corpus | Cold index | Warm map | Search | Scenario savings |
+|---|---:|---:|---:|---:|
+| Django 5.2 | 3.79 s | 0.07 s | 0.54 s | 24x |
+| WordPress 7.0 | 2.12 s | 0.02 s | 0.13 s | 51x |
+| Vite v5.4.11 | 0.48 s | 0.00 s | 0.03 s | 14x |
+| Gin v1.10.0 | 0.16 s | 0.00 s | 0.01 s | 7x |
+| ripgrep 14.1.1 | 0.37 s | 0.00 s | 0.04 s | 31x |
+
+Important interpretation: the token-savings scenarios already modeled narrow
+reads before v1.5. The v1.5 profit is therefore not a sudden new headline
+ratio; it is that narrow reads, qualified references, affected-test shortlists,
+DI/reflection mitigation, and query telemetry are now explicit product
+surfaces instead of agent discipline or benchmark assumptions.
+
 ## Benchmark matrix
 
 The goal is not one heroic number. Different ecosystems stress different parts
@@ -62,18 +81,18 @@ projects too.
 
 ## Django Reference Run
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.1.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (2272 files, ~41k symbols) | 3.9 s |
-| Embedding pass (all symbols) | 1.5 s |
-| No-op reindex | 0.12 s |
+| Cold index (2272 files, ~41k symbols) | 3.79 s |
+| Embedding pass (all symbols) | 1.57 s |
+| No-op reindex | 0.11 s |
 | Reindex after a 1-file edit | 0.13 s |
-| `map` — cold (computes PageRank) | 0.99 s |
+| `map` — cold (computes PageRank) | 0.97 s |
 | `map` — warm (rank cache) | **0.07 s** |
-| `search` (hybrid) | 0.55 s |
+| `search` (hybrid) | 0.54 s |
 
 ## Quality gates
 
@@ -118,16 +137,16 @@ Source: WordPress **7.0** from the official release zip
 bundled dependencies/admin JS with `.lotsmanignore` and measures the PHP-core
 navigation surface.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.1.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (839 files, ~9k symbols) | 2.2 s |
-| Embedding pass (all symbols) | 0.5 s |
+| Cold index (839 files, ~9k symbols) | 2.12 s |
+| Embedding pass (all symbols) | 1.45 s |
 | No-op reindex | 0.05 s |
 | Reindex after a 1-file edit | 0.10 s |
-| `map` — cold (computes PageRank) | 0.34 s |
+| `map` — cold (computes PageRank) | 0.35 s |
 | `map` — warm (rank cache) | **0.02 s** |
 | `search` (hybrid) | 0.13 s |
 
@@ -160,13 +179,13 @@ The scenario models an agent locating WordPress text-field sanitization:
 Source: Vite **v5.4.11**, shallow-cloned from
 `https://github.com/vitejs/vite.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.1.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (1131 files, ~2.2k symbols) | 0.46 s |
-| Embedding pass (all symbols) | 0.50 s |
+| Cold index (1131 files, ~2.2k symbols) | 0.48 s |
+| Embedding pass (all symbols) | 0.46 s |
 | No-op reindex | 0.04 s |
 | Reindex after a 1-file edit | 0.05 s |
 | `map` — cold (computes PageRank) | 0.09 s |
@@ -203,13 +222,13 @@ The scenario models an agent locating Vite dev-server creation:
 Source: Gin **v1.10.0**, shallow-cloned from
 `https://github.com/gin-gonic/gin.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.1.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
 | Cold index (92 files, ~1.2k symbols) | 0.16 s |
-| Embedding pass (all symbols) | 0.56 s |
+| Embedding pass (all symbols) | 0.53 s |
 | No-op reindex | 0.02 s |
 | Reindex after a 1-file edit | 0.02 s |
 | `map` — cold (computes PageRank) | 0.01 s |
@@ -246,13 +265,13 @@ The scenario models an agent locating Gin's `Context.JSON` response path:
 Source: ripgrep **14.1.1**, shallow-cloned from
 `https://github.com/BurntSushi/ripgrep.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.1.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (101 files, ~3.2k symbols) | 0.36 s |
-| Embedding pass (all symbols) | 0.59 s |
+| Cold index (101 files, ~3.2k symbols) | 0.37 s |
+| Embedding pass (all symbols) | 0.56 s |
 | No-op reindex | 0.02 s |
 | Reindex after a 1-file edit | 0.02 s |
 | `map` — cold (computes PageRank) | 0.02 s |

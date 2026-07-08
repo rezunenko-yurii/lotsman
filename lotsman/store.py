@@ -226,6 +226,16 @@ class Store:
             "WHERE i.name = ? ORDER BY i.count DESC", (name,))
         return list(cur)
 
+    def files_referencing_all(self, names: list[str]) -> list[tuple[str, int]]:
+        ph = ",".join("?" for _ in names)
+        cur = self.conn.execute(
+            "SELECT f.path, MIN(i.count) AS score "
+            "FROM idents i JOIN files f ON f.id = i.file_id "
+            f"WHERE i.name IN ({ph}) GROUP BY f.path "
+            "HAVING COUNT(DISTINCT i.name) = ? ORDER BY score DESC",
+            (*names, len(names)))
+        return [(path, count) for path, count in cur]
+
     def stats(self) -> dict:
         (files,) = self.conn.execute("SELECT COUNT(*) FROM files").fetchone()
         (symbols,) = self.conn.execute("SELECT COUNT(*) FROM symbols").fetchone()

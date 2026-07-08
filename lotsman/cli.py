@@ -9,7 +9,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from lotsman import embed, indexer, repomap, search as search_mod, sliceview
+from lotsman import (embed, indexer, refsview, repomap, search as search_mod,
+                     sliceview)
 from lotsman.store import Store
 
 
@@ -156,31 +157,34 @@ def cmd_defs(args) -> int:
 def cmd_refs(args) -> int:
     root = _root(args)
     store = _open(root)
-    defs = store.symbols_named(args.name)
-    refs = store.files_referencing(args.name)
-    store.close()
+    parts = [part for part in args.name.split(".") if part]
+    member = parts[-1] if parts else args.name
+    defs = store.symbols_named(member)
+    if len(parts) >= 2:
+        refs = store.files_referencing_all(parts)
+    else:
+        refs = store.files_referencing(member)
     def_paths = {d.path for d in defs}
     ref_only = [(p, c) for p, c in refs if p not in def_paths]
     if args.json:
-        print(json.dumps({
+        payload = {
             "definitions": [asdict(d) for d in defs],
             "references": [{"path": p, "count": c} for p, c in ref_only],
             # JSON must carry the same honesty as the text output — agents
             # binding to this shape must see the confidence level.
             "confidence": REFS_CONFIDENCE,
-        }, ensure_ascii=False))
+        }
+        if len(parts) >= 2:
+            payload["qualified"] = parts
+        print(json.dumps(payload, ensure_ascii=False))
+        store.close()
         return 0
-    if defs:
-        print("defined in:")
-        for d in defs:
-            print(f"  {d.path}:{d.line}  [{d.kind}] {d.signature}")
-    if ref_only:
-        print("referenced by (name-based matching, no type resolution):")
-        for p, c in ref_only[:args.limit]:
-            print(f"  {p}  ({c}x)")
-    if not defs and not ref_only:
-        print(f"(`{args.name}` not found in index)")
+    out = refsview.render_refs(store, args.name, limit=args.limit)
+    store.close()
+    if out == f"(`{args.name}` not found in index)":
+        print(out)
         return 1
+    print(out)
     return 0
 
 

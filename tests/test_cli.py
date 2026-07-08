@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import unittest
 
 from helpers import FixtureRepoMixin
@@ -7,6 +8,31 @@ from lotsman.cli import main
 
 
 class TestCLI(FixtureRepoMixin, unittest.TestCase):
+    def test_refs_json_qualified_field_is_conditional(self):
+        (self.tmp / "pkg" / "core.py").write_text(
+            "class Tank:\n"
+            "    def drain(self):\n"
+            "        return 1\n")
+        (self.tmp / "pkg" / "user1.py").write_text(
+            "from pkg.core import Tank\n"
+            "Tank().drain()\n")
+
+        def run_refs_json(name: str) -> dict:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                code = main(["--repo", str(self.tmp), "refs", name, "--json"])
+            self.assertEqual(code, 0)
+            return json.loads(buf.getvalue())
+
+        unqualified = run_refs_json("prepare_fuel")
+        self.assertNotIn("qualified", unqualified)
+        self.assertEqual(unqualified["confidence"]["resolution"], "name-based")
+
+        qualified = run_refs_json("Tank.drain")
+        self.assertEqual(qualified["qualified"], ["Tank", "drain"])
+        self.assertEqual(qualified["confidence"]["resolution"], "name-based")
+
     def test_cli_commands_run(self):
         for argv in (
             ["--repo", str(self.tmp), "index"],

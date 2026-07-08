@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from lotsman import (__version__, embed, indexer, repomap,
+from lotsman import (__version__, embed, indexer, refsview, repomap,
                      search as search_mod, sliceview)
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -203,22 +203,8 @@ class McpServer:
                 + f"\n(change detection: {method})")
 
     def _tool_refs(self, args: dict) -> str:
-        name = args["name"]
-        limit = int(args.get("limit") or 20)
-        defs = self.store.symbols_named(name)
-        refs = self.store.files_referencing(name)
-        def_paths = {d.path for d in defs}
-        ref_only = [(p, c) for p, c in refs if p not in def_paths]
-        if not defs and not ref_only:
-            return f"(`{name}` not found in index)"
-        lines = []
-        if defs:
-            lines.append("defined in:")
-            lines += [f"  {d.path}:{d.line}  [{d.kind}] {d.signature}" for d in defs]
-        if ref_only:
-            lines.append("referenced by (name-based matching, no type resolution):")
-            lines += [f"  {p}  ({c}x)" for p, c in ref_only[:limit]]
-        return "\n".join(lines)
+        return refsview.render_refs(
+            self.store, args["name"], int(args.get("limit") or 20))
 
     # --- JSON-RPC dispatch ---------------------------------------------------
 

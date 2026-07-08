@@ -86,6 +86,15 @@ class TestMcpDispatch(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("(truncated)", text)
         self.assertLess(len(text), 100)
 
+    def test_refs_degenerate_name_is_stable_not_found(self):
+        server = self._server()
+        refs = server.handle({
+            "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+            "params": {"name": "refs", "arguments": {"name": "..."}}})
+        self.assertFalse(refs["result"]["isError"])
+        self.assertEqual(refs["result"]["content"][0]["text"],
+                         "(`...` not found in index)")
+
 
 class TestToolSchemas(unittest.TestCase):
     """Schema stability: agents bind to these shapes."""

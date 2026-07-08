@@ -11,7 +11,8 @@ import sys
 import time
 from pathlib import Path
 
-from lotsman import __version__, embed, indexer, repomap, search as search_mod
+from lotsman import (__version__, embed, indexer, repomap,
+                     search as search_mod, sliceview)
 
 PROTOCOL_VERSION = "2024-11-05"
 REFRESH_INTERVAL = 10.0  # seconds between incremental reindex checks
@@ -75,6 +76,21 @@ TOOLS = [
             "type": "object",
             "properties": {"name": {"type": "string"}},
             "required": ["name"],
+        },
+    },
+    {
+        "name": "slice",
+        "description": (
+            "Full body of one symbol plus a signature-only skeleton of the "
+            "rest of the file. Use instead of reading a whole file when one "
+            "symbol matters."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file": {"type": "string", "description": "repo-relative path"},
+                "name": {"type": "string", "description": "symbol name"},
+            },
+            "required": ["file", "name"],
         },
     },
     {
@@ -165,6 +181,10 @@ class McpServer:
         return "\n".join(
             f"{r.path}:{r.line}  [{r.kind}] {r.signature}" for r in rows)
 
+    def _tool_slice(self, args: dict) -> str:
+        return sliceview.generate_slice(
+            self.store, self.root, args["file"], args["name"])
+
     def _tool_impact(self, args: dict) -> str:
         from lotsman import impact
         files = list(args.get("files") or [])
@@ -228,6 +248,7 @@ class McpServer:
             "search": self._tool_search,
             "outline": self._tool_outline,
             "defs": self._tool_defs,
+            "slice": self._tool_slice,
             "refs": self._tool_refs,
             "impact": self._tool_impact,
         }.get(name)

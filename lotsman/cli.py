@@ -9,7 +9,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from lotsman import embed, indexer, repomap, search as search_mod
+from lotsman import embed, indexer, repomap, search as search_mod, sliceview
 from lotsman.store import Store
 
 
@@ -126,6 +126,14 @@ def cmd_outline(args) -> int:
     print(f"{args.file}:")
     for r in rows:
         print(f"{r.line:5}-{r.end_line:<5} [{r.kind}] {r.signature}")
+    return 0
+
+
+def cmd_slice(args) -> int:
+    root = _root(args)
+    store = _open(root)
+    print(sliceview.generate_slice(store, root, args.file, args.name))
+    store.close()
     return 0
 
 
@@ -272,6 +280,12 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("file", help="path relative to repo root")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_outline)
+
+    sp = sub.add_parser("slice",
+                        help="one symbol's full body plus a file skeleton")
+    sp.add_argument("file", help="path relative to repo root")
+    sp.add_argument("name")
+    sp.set_defaults(fn=cmd_slice)
 
     sp = sub.add_parser("defs", help="where a symbol is defined")
     sp.add_argument("name")

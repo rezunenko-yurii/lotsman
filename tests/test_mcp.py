@@ -32,7 +32,7 @@ class TestMcpDispatch(FixtureRepoMixin, unittest.TestCase):
         tools = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {t["name"] for t in tools["result"]["tools"]}
         self.assertEqual(names, {"map", "search", "outline", "defs", "refs",
-                                 "impact"})
+                                 "impact", "slice"})
 
         call = server.handle({
             "jsonrpc": "2.0", "id": 3, "method": "tools/call",
@@ -47,6 +47,17 @@ class TestMcpDispatch(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("referenced by", refs["result"]["content"][0]["text"])
         # confidence marker travels with the output
         self.assertIn("name-based matching", refs["result"]["content"][0]["text"])
+
+        slice_call = server.handle({
+            "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+            "params": {"name": "slice",
+                       "arguments": {"file": "pkg/core.py",
+                                     "name": "prepare_fuel"}}})
+        self.assertFalse(slice_call["result"]["isError"])
+        self.assertIn("def prepare_fuel():",
+                      slice_call["result"]["content"][0]["text"])
+        self.assertIn("of 6 lines shown",
+                      slice_call["result"]["content"][0]["text"])
 
     def test_errors(self):
         server = self._server()
@@ -96,6 +107,7 @@ class TestToolSchemas(unittest.TestCase):
             "map": [], "impact": [],
             "search": ["query"], "outline": ["file"],
             "defs": ["name"], "refs": ["name"],
+            "slice": ["file", "name"],
         })
 
 

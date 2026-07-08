@@ -26,6 +26,17 @@ class TestCLI(FixtureRepoMixin, unittest.TestCase):
                 code = main(argv)
             self.assertEqual(code, 0, f"{argv} -> {buf.getvalue()}")
 
+    def test_slice_command_outputs_target_body(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), \
+                contextlib.redirect_stderr(io.StringIO()):
+            code = main(["--repo", str(self.tmp), "slice",
+                         "pkg/core.py", "prepare_fuel"])
+        self.assertEqual(code, 0)
+        out = buf.getvalue()
+        self.assertIn("def prepare_fuel():", out)
+        self.assertIn("of 6 lines shown", out)
+
     def test_read_commands_refresh_after_immediate_file_change(self):
         def run_outline() -> str:
             buf = io.StringIO()

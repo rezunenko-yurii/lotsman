@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased
+## Unreleased — 2026-07-10
 
 - **`lotsman update`** — explicit maintenance command for refreshing managed
   agent artifacts and the local index after upgrading Lotsman or changing
   project source. Without `--agent`, it auto-detects existing supported agent
   files; use `--agent` to add or force a specific integration.
+- **Install UX docs** — README now explains the difference between running
+  Lotsman from a checkout with `python3 -m lotsman` and installing the
+  `lotsman` command with `python3 -m pip install -e ".[embeddings]"`.
+- **Generated skill refresh** — the Codex-format skill now mentions the
+  `python3 -m lotsman` fallback, and the Claude Code skill is updated for the
+  v1.5 workflow: `slice`, qualified `refs Class.Method`, `impact --tests`,
+  `report`, and `.lotsman/wiring.json`.
 
 ## 1.5.0 — 2026-07-08
 

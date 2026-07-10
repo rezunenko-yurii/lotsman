@@ -63,6 +63,10 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("allowed-tools:", text)
         self.assertIn("Bash(lotsman:*)", text)
         self.assertIn("Deep local index, narrow retrieval", text)
+        self.assertIn("lotsman slice <file> <name>", text)
+        self.assertIn("lotsman refs Class.Method", text)
+        self.assertIn("lotsman impact <files> --tests", text)
+        self.assertIn(".lotsman/wiring.json", text)
 
     def test_mcp_json_merge_preserves_other_servers(self):
         (self.tmp / ".mcp.json").write_text(json.dumps(
@@ -97,6 +101,7 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("AI coding agent", text)
         self.assertIn("slice FILE NAME", text)
         self.assertIn("impact --tests", text)
+        self.assertIn("python3 -m lotsman", text)
         self.assertNotIn("Use when Codex needs", text)
         self.assertNotIn("allowed-tools:", text)
 

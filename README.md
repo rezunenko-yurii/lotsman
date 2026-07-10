@@ -24,6 +24,7 @@ candidates to inspect; it does not prove complete semantic truth.
 - [Why Agents Need It](#why-agents-need-it)
 - [Should You Use It?](#should-you-use-it)
 - [What Changed In 1.5](#what-changed-in-15)
+- [Install The Command](#install-the-command)
 - [Quick Start](#quick-start)
 - [Daily Workflow](#daily-workflow)
 - [Updating Lotsman And Generated Agent Files](#updating-lotsman-and-generated-agent-files)
@@ -107,14 +108,57 @@ the narrow-read behavior is now a first-class command/tool (`slice`), refs can
 be focused, impacted tests can be shortlisted, DI blind spots can be mitigated,
 and query behavior can be measured locally.
 
+## Install The Command
+
+Lotsman is a Python package. Opening a terminal inside the Lotsman source
+folder does **not** automatically create a global `lotsman` command.
+
+If you only want to try it from a checkout, use Python module mode:
+
+```bash
+cd /path/to/lotsman
+python3 -m lotsman --version
+python3 -m lotsman map --budget 1500
+```
+
+If you want the normal short command to work everywhere, install the package
+once into your current Python environment:
+
+```bash
+cd /path/to/lotsman
+python3 -m pip install -e ".[embeddings]"
+lotsman --version
+```
+
+From GitHub, the same idea is:
+
+```bash
+python3 -m pip install "lotsman[embeddings] @ git+https://github.com/rezunenko-yurii/lotsman"
+lotsman --version
+```
+
+If `lotsman --version` still says command not found, Python probably installed
+the script into a directory that is not in your `PATH`. Check where pip puts
+user scripts:
+
+```bash
+python3 -m site --user-base
+```
+
+On macOS the command is often under `~/Library/Python/<version>/bin`. Add that
+`bin` directory to your shell `PATH`, then open a new terminal.
+
 ## Quick Start
 
 ```bash
-pip install "lotsman[embeddings] @ git+https://github.com/rezunenko-yurii/lotsman"
 cd /your/project
 lotsman init --agent codex
 lotsman map --budget 1500
 ```
+
+Quick Start assumes the `lotsman` command is already installed. If not, use
+`python3 -m lotsman ...` from a checkout, or follow
+[Install The Command](#install-the-command).
 
 `init` is idempotent. It can add an agent policy, a `.lotsmanignore` skeleton,
 MCP hints, a project-local skill for supported agents, the first index, and a

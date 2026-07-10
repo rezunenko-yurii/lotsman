@@ -65,7 +65,8 @@ Do not confuse a larger `map --budget` with deeper indexing.
 
 Prefer MCP tools when available. Tool names vary by host: some agents expose
 plain `map/search/outline/...`, while others expose names like
-`mcp__lotsman__map`. Fall back to CLI commands when MCP is unavailable.
+`mcp__lotsman__map`. Fall back to CLI commands when MCP is unavailable. If
+the `lotsman` command is not installed, use `python3 -m lotsman`.
 
 ## Slice Selection
 
@@ -94,7 +95,7 @@ plain `map/search/outline/...`, while others expose names like
 CLAUDE_SKILL = """\
 ---
 name: lotsman-navigation
-description: Use when Claude Code needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, file inspection, definitions/references, impact analysis, or avoiding broad reads.
+description: Use when Claude Code needs to navigate, understand, search, inspect, or safely edit a codebase with Lotsman available; especially unfamiliar code, behavior search, symbol/file inspection, definitions/references, impact analysis, affected-test selection, or avoiding broad reads.
 allowed-tools: Bash(lotsman:*), Bash(python3 -m lotsman:*), Read, Grep
 ---
 
@@ -114,17 +115,22 @@ checkout, use that command prefix instead.
 | Situation | Ask for |
 |---|---|
 | Unfamiliar area | `lotsman map --budget 1500 --mention <task-term>` |
+| Clear concept/domain/API | `lotsman map --mention <identifier> --budget 2500` |
 | Behavior or feature search | `lotsman search "<query>"` |
 | Candidate file found | `lotsman outline <file>`, then read only relevant ranges |
-| Symbol/API change | `lotsman refs <name>` before editing |
+| One symbol matters | `lotsman slice <file> <name>` instead of reading the whole file |
+| Symbol/API change | `lotsman refs <name>`; use `lotsman refs Class.Method` for noisy method names |
 | File or batch change | `lotsman impact <files>` before and after editing |
+| Need test candidates | `lotsman impact <files> --tests` |
+| Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `lotsman report` |
 | Need broader context | Increase map budget only with `--mention` or `--focus` |
 
 ## Rules
 
 - Start compact; widen only when the task demands it.
-- Read files only after `search` or `outline` makes them relevant.
+- Read files only after `search`, `outline`, or `slice` makes them relevant.
 - Treat `refs` and `impact` as name-based candidate lists, not proof.
+- Use `.lotsman/wiring.json` for project-specific DI/reflection/config names.
 - Use `lotsman doctor` or `lotsman index --verify` when freshness or environment health is in doubt.
 """
 

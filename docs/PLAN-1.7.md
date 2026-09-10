@@ -5,9 +5,9 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1 and X1 done and
-committed too; **next: X2–X5** (X1 is CLI-only: no MCP tool budget left).
-B0 now 45,960 tokens, found 0.99 (X1 has no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1, X1 and X2 done and
+committed too; **next: X3–X5** (X1/X2 are CLI-only: no MCP tool budget left).
+B0 now 45,960 tokens, found 0.99 (X1/X2 have no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -561,6 +561,36 @@ project; B0 has no V1 question — the harness cannot seed edits):
 - **X2. "Why does A depend on B"** `lotsman why A B`: shortest reference path
   between two files/types with the names on each edge (idea from
   uasset-reference-mcp `trace_path`).
+
+  Status: **done** (2026-09-11). `lotsman why A B [--json]`
+  (`lotsman/why.py`; CLI only). Endpoints: file, folder or path tail, type,
+  `Type.Member`, asmdef name, unique folder name. Graph = file → file hops:
+  a type name → its defining file; a member only where the file names every
+  enclosing type (all languages); nested types gated by their outer chain,
+  private nested C# types hidden; the file's own types shadow foreign ones;
+  free functions / C# extensions ungated but skipped when the file defines
+  the name (extensions need `x.Name(`; Python functions need the module in
+  an import line); a C# hop across assemblies `can_see` refuses is dropped
+  (A1). Weak = STOPWORDS or > 3 definers. Assets: `m_Script` GUID, source
+  prefab, UnityEvent call (`Hop.calls`). Search: layered BFS ≤ 8 hops over
+  the shortest-path DAG, the route with the strongest weakest hop wins;
+  phases, first hit wins: strong → dispatch (type → subtype files, not into
+  tests, never right after a base hop) → reverse → weak, each labelled.
+  No index change (store queries only).
+  Measured. Baseline = an agent walking `refs` breadth-first from A (limit
+  20, cap 300 calls) on pairs at distance 2/3/4 over name edges, 10 each.
+  Chop Chop: found 7/4/9 of 10, median 9/114/64 calls, 1.2k/10.3k/6.6k
+  tokens (reading only the route: 0.5k/0.8k/1.2k). SDK-Kitchen: 6/3/3 of
+  10, 22/300/300 calls, 3.6k/31k/32k tokens (0.7k/1.1k/1.6k). `why` on the
+  same 60 pairs: every baseline route whose hops are all real (36/36),
+  same length; the other 24 baseline routes ran through name clashes
+  (22 in SDK-Kitchen: nested `Result`/`Item`/`Node` types) and `why`
+  rejects them. Precision: 48 random routes `why` drew (d = 2–5 + asset
+  pairs), each hop judged by its source line: 129/131 real (SDK-Kitchen
+  65/67: a namespace segment named like a type, an alias using). Cost:
+  ~130 tokens median, CLI 0.17–0.27 s, 1.7 ms/query on a shared graph.
+  Bench gates (Chop Chop): asset → script one hop 110/110, through prefab
+  instances ≤ 2 hops 102/102, UnityEvent call on the first hop 18/18.
 - **X3. Index snapshot**: `lotsman index --export PATH` writes a compressed
   index (stdlib `lzma`/`zlib`) meant for the repo or CI cache; a missing index
   restores from it, then refreshes incrementally.

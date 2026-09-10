@@ -613,6 +613,58 @@ class Store:
             "SELECT path FROM files WHERE path = ? OR path LIKE ?",
             (filename, "%/" + filename))]
 
+    # --- reference paths (why) ----------------------------------------------
+
+    def code_symbols(self) -> list[SymbolRow]:
+        """Every symbol but doc sections and config keys (members included)."""
+        skip = DOC_KINDS + DATA_KINDS
+        cur = self.conn.execute(
+            "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature "
+            "FROM symbols s JOIN files f ON f.id = s.file_id "
+            f"WHERE s.kind NOT IN ({','.join('?' * len(skip))})", skip)
+        return [SymbolRow(*row) for row in cur]
+
+    def idents_in(self, paths: list[str]) -> dict[str, list[tuple[str, int, list[int]]]]:
+        """path -> (name, count, lines) of every identifier the file names."""
+        out: dict[str, list[tuple[str, int, list[int]]]] = defaultdict(list)
+        for i in range(0, len(paths), 500):
+            chunk = paths[i:i + 500]
+            for path, name, count, lines in self.conn.execute(
+                    "SELECT f.path, i.name, i.count, i.lines FROM idents i "
+                    "JOIN files f ON f.id = i.file_id "
+                    f"WHERE f.path IN ({','.join('?' * len(chunk))})", chunk):
+                out[path].append((name, count, _decode_lines(lines)))
+        return out
+
+    def bases_by_file(self) -> list[tuple[str, str, str, int]]:
+        """(path, type, base, line) of every base-list entry."""
+        return self.conn.execute(
+            "SELECT f.path, b.type_name, b.base_name, b.line FROM bases b "
+            "JOIN files f ON f.id = b.file_id").fetchall()
+
+    def asset_refs_of(self, paths: list[str], kinds: tuple[str, ...]
+                      ) -> list[tuple[str, str, str, str, int]]:
+        """(asset path, kind, key, owner, line) of the given files and kinds."""
+        out = []
+        for i in range(0, len(paths), 500):
+            chunk = paths[i:i + 500]
+            out += self.conn.execute(
+                "SELECT f.path, a.kind, a.key, a.owner, a.line FROM asset_refs a "
+                "JOIN files f ON f.id = a.file_id "
+                f"WHERE f.path IN ({','.join('?' * len(chunk))}) "
+                f"AND a.kind IN ({','.join('?' * len(kinds))}) ORDER BY f.path, a.line",
+                (*chunk, *kinds)).fetchall()
+        return out
+
+    def langs_of(self, paths: list[str]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for i in range(0, len(paths), 500):
+            chunk = paths[i:i + 500]
+            out.update(self.conn.execute(
+                f"SELECT path, lang FROM files WHERE path IN ({','.join('?' * len(chunk))})",
+                chunk).fetchall())
+        return out
+
     def has_file(self, path: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None
 

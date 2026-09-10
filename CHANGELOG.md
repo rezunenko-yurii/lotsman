@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **`lotsman why A B` — why A depends on B.** The shortest reference path
+  between two files, folders, types, `Type.Member`s or Unity assemblies,
+  with the names that make each hop and their lines in the source file.
+  A hop is a type the file names; a member counts only where the file also
+  names its type (and the outer types of a nested one); private nested
+  types, a file's own types and assemblies Unity would not let the code see
+  are skipped. Unity assets add hops: the script a prefab or scene uses,
+  the prefab it instances, the methods its UnityEvents call. When no plain
+  route exists, `why` says so and falls back to runtime dispatch (interface
+  → implementation), then to the reverse direction, then to generic or
+  many-times-defined names — each labelled. On 60 pairs a manual `refs`
+  walk joined (limit 300 calls), it found every route whose hops were all
+  real at the same length (36/36) and rejected the 24 made of name clashes;
+  in 48 random routes it drew, 129/131 hops were real. Manual walk: 9–300 calls and
+  1.2k–32k tokens per question, missing up to 7/10; `why`: one call,
+  ~130 tokens, 0.2 s. CLI only.
 - **`lotsman unused [PATH]` — C# types and methods nothing names.** A
   candidate has no code identifier outside its own body (bare camelCase and
   `_underscore` names checked by text), no asset use (the script's GUID; a

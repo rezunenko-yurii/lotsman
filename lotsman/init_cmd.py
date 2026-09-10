@@ -84,6 +84,7 @@ the `lotsman` command is not installed, use `python3 -m lotsman`.
 | Unity: does the project compile after edits | `unity errors` (check its stale flag) |
 | Unity: missing scripts, UnityEvent calls to methods that no longer exist | `unity missing` |
 | Dead code: C# types/methods nothing names (code, assets, strings) | `unused [PATH]` (candidates; verify) |
+| Why A depends on B (route with the names on each hop) | `why A B` |
 | Need test candidates | `impact --tests` / MCP impact with `tests: true` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `report` |
 | Need broader context | Increase map budget only with mention/focus |
@@ -130,6 +131,7 @@ checkout, use that command prefix instead.
 | Unity: does the project compile after edits | `lotsman unity errors` (check its stale flag) |
 | Unity: missing scripts, UnityEvent calls to methods that no longer exist | `lotsman unity missing` |
 | Dead code: C# types/methods nothing names (code, assets, strings) | `lotsman unused [<path>]` (candidates; verify) |
+| Why A depends on B (route with the names on each hop) | `lotsman why <A> <B>` |
 | Need test candidates | `lotsman impact <files> --tests` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `lotsman report` |
 | Need broader context | Increase map budget only with `--mention` or `--focus` |

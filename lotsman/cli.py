@@ -276,6 +276,19 @@ def cmd_unused(args) -> int:
     return 0
 
 
+def cmd_why(args) -> int:
+    from lotsman import why
+    root = _root(args)
+    store = _open(root)
+    res = why.find_path(store, args.a, args.b, root)
+    store.close()
+    if args.json:
+        print(json.dumps(why.why_json(res), indent=2))
+    else:
+        print(why.render_why(res))
+    return 0 if res.hops else 1
+
+
 def cmd_impact(args) -> int:
     from lotsman import impact
     root = _root(args)
@@ -430,6 +443,13 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_unused)
 
+    sp = sub.add_parser("why", help="why A depends on B: the shortest reference "
+                                    "path, with the names on each hop")
+    sp.add_argument("a", help="file, folder, type, Type.Member, asmdef or folder name")
+    sp.add_argument("b", help="file, folder, type, Type.Member, asmdef or folder name")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_why)
+
     sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
                                       "compiling a file/type, its references, who "
                                       "references it, #if branches per target; "
@@ -484,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
 
 # Read commands whose use is worth measuring (`lotsman report`).
 LOGGED_COMMANDS = frozenset({"map", "search", "outline", "slice", "defs",
-                             "refs", "impact", "change", "unity", "unused"})
+                             "refs", "impact", "change", "unity", "unused", "why"})
 
 
 def _run_logged(args, root: Path) -> int:

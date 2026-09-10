@@ -445,6 +445,36 @@ entry points, an Android build callback. `bench_unity_game.py` gates that
 public API nothing here calls (DOTween modules; SDK components for games).
 Time: 0.2 s and 0.8 s.
 
+## Why A Depends on B (X2)
+
+`lotsman why A B` against an agent answering the same question with `refs`:
+breadth-first from A, one `refs` call per type the reached files define
+(limit 20), cap 300 calls, 2026-09-11. Pairs: 10 random at distance 2, 3
+and 4 over name edges per corpus. Tokens = `refs` output read; "route
+only" = the tokens of just the calls on the route (an oracle).
+
+| Corpus | Distance | Baseline found | Calls (median) | Tokens (median) | Route only |
+|---|---:|---:|---:|---:|---:|
+| Chop Chop | 2 | 7/10 | 9 | 1,197 | 501 |
+| Chop Chop | 3 | 4/10 | 114 | 10,257 | 834 |
+| Chop Chop | 4 | 9/10 | 64 | 6,576 | 1,153 |
+| Private Unity project | 2 | 6/10 | 22 | 3,580 | 741 |
+| Private Unity project | 3 | 3/10 | 300 | 31,087 | 1,143 |
+| Private Unity project | 4 | 3/10 | 300 | 32,393 | 1,645 |
+
+`why`, one call per pair: ~130 tokens median, 0.17–0.27 s. On the 60
+pairs it found every baseline route whose hops are all real references
+(36/36), at the same length. The other 24 baseline routes (22 in the
+private project) ran through name clashes — mostly nested types such as
+`Result`, `Item`, `Node` defined in many classes — and `why` gates them
+out. Precision: 48 random routes `why` drew (distance 2–5, plus asset →
+script pairs), every hop judged by its source line: 129/131 real; both
+misses in the private project (a namespace segment spelled like a type, an
+alias `using`). `bench_unity_game.py` gates on Chop Chop: an asset reaches
+its script in one hop (110/110), a scene reaches scripts inside instanced
+prefabs in ≤ 2 hops (102/102), the first hop names the method a UnityEvent
+calls (18/18); 1.7 ms per query on a shared graph.
+
 ## Early Recommendations
 
 These are recommendations from the current corpus, not final language rankings.

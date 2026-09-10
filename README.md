@@ -315,6 +315,7 @@ the agent should only see the next useful piece.
 | `change Type.Member` | Definition, overrides/implementations, callers `file:line` in the type family, tests marked | A compiler's verdict | You are about to change a signature, rename or remove a member |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
 | `unused [PATH]` | C# types/methods no code, asset or string names, members folded into their type; counts of what may run without a name | Proof of death: reflection, other repos, CI | You look for dead code to delete |
+| `why A B` | The shortest route A → B, file by file, with the names (and lines) that make each hop; assets included | Links made at runtime (DI, reflection, strings) | You wonder why a file, folder or assembly depends on another |
 | `unity FILE [USES]` | Unity: the assembly (asmdef) compiling a file/type, its references `asmdef:line`, who references it, targets it builds for, `#if` branches with where each compiles, undefined symbols, define sites; with USES, whether that code is visible | A compiler's verdict; defines set by build scripts | You add a dependency across assemblies, ask what recompiles, or whether code runs on a platform/in the Editor |
 
 Map budget is output budget, not index depth. `map --budget 5000` gives the
@@ -418,6 +419,10 @@ generated, minified and asset-heavy trees in `.lotsmanignore`.
   code, assets or strings, and counts what may run without a name (Unity
   messages, `[Test]`/`[MenuItem]`, reflection-created types) instead of
   listing it.
+- `lotsman why A B` walks code and assets: a prefab or scene reaches its
+  scripts, the prefabs it instances and the methods its UnityEvents call; a
+  hop between assemblies Unity would not let the code see is dropped. A and
+  B may also be asmdef names.
 - `lotsman unity missing` lists missing scripts, stale UnityEvent calls
   (the target type no longer has the method), calls whose target is gone and
   animation events naming no indexed method.
@@ -544,6 +549,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman unity errors [--log PATH]` | Unity: errors of the last compilation in the Editor log, deduped, with a staleness flag when sources changed after the log |
 | `lotsman unity missing` | Unity: missing scripts, UnityEvent calls to methods the target type lacks, calls without a target, animation events naming no method |
 | `lotsman unused [PATH] [-k N] [--json]` | C#: types and methods nothing names — no code use outside their own body, no asset (script GUID, UnityEvent call, animation event), no string literal; counts by reason what may run without a name (Unity messages, overrides, `[Test]`/`[MenuItem]`, reflection-created types, `-executeMethod` entry points, package API) |
+| `lotsman why A B [--json]` | the shortest name-based route from A to B (file, folder, type, `Type.Member`, asmdef or folder name): each hop with its names and their lines; Unity assets included; falls back, labelled, to interface → implementation, the reverse direction, then generic names |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates; C#: methods whose parameter count changed since the last index get their call sites checked (`breaks` / `maybe` with `file:line`); Unity: assets bound to the changed files |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |
@@ -578,6 +584,10 @@ Freshness:
   other repositories use is listed, and code run by computed strings, DI
   config outside the index or CI `-executeMethod` is only caught by the
   heuristics it names. C# only.
+- `why` is name-based too: a namespace segment spelled like a type, or an
+  alias `using X = Other.Type`, can make a false hop; links made at runtime
+  (DI, reflection, strings, events wired in code) are invisible, so "no
+  route" is not proof of independence.
 - PHP references are lexical today.
 - Reflection, DI and generated code can be missed;
   add `.lotsman/wiring.json` patterns when the repo encodes important edges in

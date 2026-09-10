@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lotsman import indexer, refsview, unityassets, unused  # noqa: E402
+from lotsman import indexer, refsview, unityassets, unused, why  # noqa: E402
 from lotsman.store import TYPE_KINDS, Store  # noqa: E402
 
 CORPUS_REPO = "https://github.com/UnityTechnologies/open-project-1.git"
@@ -57,6 +57,7 @@ SCRIPT_RE = re.compile(r"m_Script: \{fileID: 11500000, guid: ([0-9a-f]{32})")
 TARGET_TYPE_RE = re.compile(r"m_TargetAssemblyTypeName: ([\w.+`]+)")
 METHOD_RE = re.compile(r"m_MethodName: (\w+)")
 ANIM_EVENT_RE = re.compile(r"functionName: (\w+)")
+SOURCE_PREFAB_RE = re.compile(r"m_SourcePrefab: \{fileID: -?\d+, guid: ([0-9a-f]{32})")
 # A UnityEvent call set by a prefab-instance override.
 OVERRIDE_CALL_RE = re.compile(
     r"propertyPath: \S*m_PersistentCalls\.m_Calls\.Array\.data\[\d+\]\.m_MethodName\s*\n"
@@ -95,6 +96,12 @@ def build_truth(project: Path) -> dict:
         if m:
             scripts[m.group(1)] = meta.relative_to(assets_dir).as_posix()[:-5]
     stems = {Path(p).stem for p in scripts.values()}
+    prefabs: dict[str, str] = {}            # guid -> Assets-relative .prefab path
+    for meta in assets_dir.rglob("*.prefab.meta"):
+        m = GUID_RE.search(meta.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            prefabs[m.group(1)] = meta.relative_to(assets_dir).as_posix()[:-5]
+    instances: dict[str, set[str]] = defaultdict(set)  # asset -> prefabs it instances
     code = "\n".join((assets_dir / p).read_text(encoding="utf-8", errors="replace")
                      for p in scripts.values())
     users: dict[str, set[str]] = defaultdict(set)      # script path -> asset files
@@ -129,6 +136,9 @@ def build_truth(project: Path) -> dict:
         for guid in set(SCRIPT_RE.findall(text)):
             if guid in scripts:
                 users[scripts[guid]].add(rel)
+        for guid in set(SOURCE_PREFAB_RE.findall(text)):
+            if guid in prefabs and prefabs[guid] != rel:
+                instances[rel].add(prefabs[guid])
         if "m_PersistentCalls" in text:
             local = {fid: guid for fid, guid in DOC_SCRIPT_RE.findall(text)}
             for fid, guid, type_name, method in CALL_RE.findall(text):
@@ -157,7 +167,7 @@ def build_truth(project: Path) -> dict:
             anim_calls[fn].add(rel)
     return {"scripts": scripts, "users": users, "calls": calls,
             "anim_calls": anim_calls, "override_calls": override_calls,
-            "asset_files": asset_files, "by_ext": by_ext}
+            "instances": instances, "asset_files": asset_files, "by_ext": by_ext}
 
 
 def evaluate(project: Path, store: Store, truth: dict) -> dict:
@@ -204,6 +214,33 @@ def evaluate(project: Path, store: Store, truth: dict) -> dict:
     trap_listed = sum(1 for c in rep.candidates
                       if c.row.kind in TYPE_KINDS and c.row.name in
                       {Path(s).stem for s, _ in code_unused_but_used})
+    # X2: `why asset script` must follow the same links (sampled; one graph).
+    graph = why.Graph(store, project / "Assets")
+    times: list[float] = []
+
+    def route(a: str, b: str) -> list:
+        t0 = time.perf_counter()
+        res = why.find_path(store, a, b, graph=graph)
+        times.append(time.perf_counter() - t0)
+        return [] if res.reverse else res.hops
+
+    links = sorted((a, s) for s, files in users.items() for a in files)
+    direct = links[::max(1, len(links) // 100)]
+    direct_hit = sum([h.kind for h in route(a, s)] == [why.SCRIPT] for a, s in direct)
+    scripts_of: dict[str, set[str]] = defaultdict(set)
+    for s, files in users.items():
+        for a in files:
+            scripts_of[a].add(s)
+    nested_all = sorted({(a, s) for a, ps in truth["instances"].items() for p in ps
+                         for s in scripts_of.get(p, ()) if a not in users[s]})
+    nested = nested_all[::max(1, len(nested_all) // 100)]
+    nested_hit = sum(0 < len(route(a, s)) <= 2 for a, s in nested)
+    def first_hop_calls(a: str, b: str) -> set[str]:
+        hops = route(a, b)
+        return hops[0].calls if hops else set()
+
+    call_hit = sum(m in first_hop_calls(sorted(files)[0], f"{owner}.{m}")
+                   for (owner, m), files in sorted(project_calls.items()))
     missing = unityassets.render_missing(store, project / "Assets")
     stale_hit = sum(any(f"{f}:" in line and line.endswith(f".{m}")
                         for f in files for line in missing.splitlines())
@@ -225,6 +262,10 @@ def evaluate(project: Path, store: Store, truth: dict) -> dict:
             "unused_candidates": len(rep.candidates),
             "unused_types": sum(1 for c in rep.candidates if c.row.kind in TYPE_KINDS),
             "unused_but_data": unused_but_data, "unused_trap_listed": trap_listed,
+            "why_direct": len(direct), "why_direct_hit": direct_hit,
+            "why_nested": len(nested), "why_nested_hit": nested_hit,
+            "why_calls_hit": call_hit,
+            "why_ms": round(1000 * sorted(times)[len(times) // 2], 1) if times else 0,
             "code_unused_but_used": code_unused_but_used, "x1_now_visible": x1_now_visible}
 
 
@@ -300,6 +341,11 @@ def main() -> int:
               f"({ev['unused_types']} types); used by assets yet listed: "
               f"{len(ev['unused_but_data'])} {ev['unused_but_data'][:5]}; X1-trap scripts "
               f"listed: {ev['unused_trap_listed']} of {len(trap)}")
+        print(f"X2 `why`: asset -> its script in 1 hop {ev['why_direct_hit']}/"
+              f"{ev['why_direct']}; -> a script of an instanced prefab in <= 2 hops "
+              f"{ev['why_nested_hit']}/{ev['why_nested']}; UnityEvent calls reached by a "
+              f"call hop {ev['why_calls_hit']}/{ev['project_calls']}; median "
+              f"{ev['why_ms']} ms/query")
         gates = [
             ("scripts", len(truth["scripts"]) >= GATES["min_scripts"]),
             ("asset files", truth["asset_files"] >= GATES["min_asset_files"]),
@@ -311,6 +357,10 @@ def main() -> int:
             ("project UnityEvent calls shown ≥ 90%", ev["project_calls_shown"]
              >= 0.9 * ev["project_calls"]),
             ("unused lists nothing the assets use", not ev["unused_but_data"]),
+            ("why: asset -> script 100%", ev["why_direct_hit"] == ev["why_direct"]),
+            ("why: through prefab instances ≥ 95%", ev["why_nested_hit"]
+             >= 0.95 * ev["why_nested"]),
+            ("why: UnityEvent calls ≥ 90%", ev["why_calls_hit"] >= 0.9 * ev["project_calls"]),
         ]
         failed = [name for name, ok in gates if not ok]
         print("\ncorpus gates: " + ("pass" if not failed else "FAIL: " + ", ".join(failed)))

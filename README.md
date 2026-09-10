@@ -382,6 +382,7 @@ Lotsman works best when code has stable named symbols in ordinary source files.
 | Fit | Languages / files | What you get |
 |---|---|---|
 | Best | Python, JavaScript, TypeScript/TSX, Go, Rust, Java, C/C++, Ruby, C#, PHP | tree-sitter definitions; tree-sitter references except PHP, where references are lexical today |
+| Configs | JSON (`.json`, JSON `.rc`) | type names, member-named keys and values count as references (`refs`/`change` `data —` block); keys in `outline` |
 | Docs | Markdown (`.md`) | heading sections in `outline`, full-text section search in Russian and English (needs SQLite FTS5; `doctor` checks), binding docs marked |
 | Useful fallback | Kotlin, Swift, Scala, Lua, Bash and other source-like text | file discovery, regex definitions where patterns match, lexical identifiers |
 | Needs cleanup | minified bundles, generated code, vendored SDKs, copied dependencies | noisy maps unless ignored |

@@ -217,6 +217,25 @@ shows top-level structure with lines.
 - Done when: all 46 type-referencing JSON files found for their types;
   renaming check on 10 sampled members finds every JSON key.
 
+Status 2026-09-10 — implemented (`lotsman/jsonrefs.py`; INDEX_VERSION 7):
+`.json` and content-sniffed `.rc`; tolerant tokenizer (comments, trailing
+commas); keys and string values count as references when they name code in
+PascalCase after stripping markers (`-------LOCKED-------`), `$`/`*` and
+member prefixes (`p_`/`f_`/`t_`, hardcoded defaults — no config needed for
+ExDi; make configurable when another convention shows up); dotted and
+`Type, Assembly` values → last name; files > 256 KB, generated one-liners and
+non-JSON `.rc` skipped. Keys up to depth 2 are `key` symbols (outline only).
+JSON/Markdown never feed the map graph; JSON does feed `impact`. `refs`
+prints a `data —` block, `change` a `data —` block marking configs that do not
+name the type (`"$merge": "Union"`). Repo-root docs no longer print a
+`docs:` line in outline. Per-word term cache: cold index 3.6 s (1.6: 2.5 s).
+
+Measured: done criteria met — 159/159 (file, type) string mentions in 47
+JSON files found by `refs`; renaming check 10/10 members fully covered.
+B0 (`b0_j1_2026-09-10.json`): **data 54,199 → 3,966 tokens (−93%; data-02
+45k → 93)**, change 3,164 (JSON now in `change`, no grep fallback);
+**all 28 questions 132,287 → 48,870 (−63%)**.
+
 **A1. Assemblies (`.asmdef`).** Map file → assembly (nearest asmdef up the
 tree), assembly references (names and `GUID:` via `.asmdef.meta`), platforms,
 `defineConstraints`. Surfaces: one header line in `outline`; `change`/`impact`

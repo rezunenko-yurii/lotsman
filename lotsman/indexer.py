@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import docs, extract, scanner, wiring
+from lotsman import docs, extract, jsonrefs, scanner, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -19,7 +19,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "6"
+INDEX_VERSION = "7"
 
 
 @dataclass
@@ -139,6 +139,16 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
                 doc_text = {(s.name, s.line): (s.heading_terms, s.body_terms)
                             for s in sections}
                 docs_changed = True
+            elif rec.lang == "json":
+                # Configs reference code by name; dumps, lock files and
+                # generated maps are too big or not JSON (`.rc` in C projects).
+                if (len(data) > jsonrefs.MAX_JSON_BYTES or _looks_generated(data)
+                        or not jsonrefs.looks_like_json(data)):
+                    symbols, idents, lines = [], Counter(), {}
+                else:
+                    keys, idents, lines = jsonrefs.extract_json(data)
+                    symbols = [extract.Symbol(k.name, jsonrefs.KEY_KIND, k.line,
+                                              k.end_line, k.signature) for k in keys]
             elif _looks_generated(data):
                 symbols, idents, lines = [], Counter(), {}  # record the file only
             else:

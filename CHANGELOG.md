@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **JSON configs reference code.** `.json` (and `.rc` files that contain
+  JSON) are indexed: `"$type": "Ns.Type"`, keys named after members
+  (`"p_Checker"` → `Checker`, `f_`/`t_` prefixes, `-------LOCKED-------`
+  markers) and PascalCase string values (`"$merge": "Union"`,
+  `["t_CrmConnector"]`) count as references with lines. `refs` shows them in a
+  `data —` block, `change` lists configs that break on a rename (marking the
+  ones that never name the type), `impact` counts them, `outline file.json`
+  shows the keys. Big JSON (> 256 KB), generated one-liners and non-JSON
+  `.rc` are skipped; data files never feed the map ranking. On a Unity
+  project: config questions 54k → 4k tokens; every JSON mention of a C# type
+  found (159/159). Index format 7.
 - **`lotsman change TARGET`** (CLI and MCP tool) — before changing a symbol,
   one capped report: its definition, declarations it implements in
   supertypes, overrides/implementations in subtypes (test doubles included),

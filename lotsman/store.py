@@ -64,7 +64,12 @@ MEMBER_KINDS = ("field", "event")
 # Markdown heading sections: listed by outline and found by docs search
 # (FTS5 over their text), never ranked, code-searched or named by defs/refs.
 DOC_KINDS = ("section",)
-UNRANKED_KINDS = MEMBER_KINDS + DOC_KINDS
+# JSON config keys: outline only (`outline config.json`).
+DATA_KINDS = ("key",)
+UNRANKED_KINDS = MEMBER_KINDS + DOC_KINDS + DATA_KINDS
+# Files that reference code without being code: their references show in
+# refs/change/impact, but never feed the map's ranking graph.
+NON_CODE_LANGS = ("markdown", "json")
 # SQL filter on the `symbols s` alias: symbols that rank, embed and code-search.
 RANKED_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in UNRANKED_KINDS)
 
@@ -289,7 +294,8 @@ class Store:
         cur = self.conn.execute(
             "SELECT f.path, i.name, i.count FROM idents i "
             "JOIN files f ON f.id = i.file_id "
-            f"WHERE i.name IN (SELECT DISTINCT name FROM symbols s WHERE {RANKED_SQL})")
+            f"WHERE i.name IN (SELECT DISTINCT name FROM symbols s WHERE {RANKED_SQL}) "
+            "AND f.lang NOT IN ('markdown', 'json')")
         result: dict[str, Counter] = defaultdict(Counter)
         for path, name, count in cur:
             result[path][name] = count
@@ -344,7 +350,8 @@ class Store:
         cur = self.conn.execute(
             "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature "
             "FROM symbols s JOIN files f ON f.id = s.file_id "
-            "WHERE s.name = ? AND s.kind != 'section' ORDER BY f.path, s.line", (name,))
+            "WHERE s.name = ? AND s.kind NOT IN ('section', 'key') "
+            "ORDER BY f.path, s.line", (name,))
         return [SymbolRow(*row) for row in cur]
 
     def search_docs(self, match: str, limit: int) -> list[tuple]:

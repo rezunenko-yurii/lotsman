@@ -8,6 +8,12 @@ from lotsman.store import Store, SymbolRow
 
 LINES_PER_FILE = 6  # enough to jump to the sites; the file itself has the rest
 MAX_DEFS_SHOWN = 8
+DATA_SUFFIXES = (".json", ".rc")
+
+
+def is_data_path(path: str) -> bool:
+    """Config files that reference code by name (see jsonrefs)."""
+    return path.endswith(DATA_SUFFIXES)
 
 
 @dataclass
@@ -105,8 +111,10 @@ def render_refs(store: Store, name: str, limit: int = 20) -> str:
     if not result.refs:
         return "\n".join(lines)
 
-    strong = [s for s in result.refs if s.same_line]
-    weak = [s for s in result.refs if not s.same_line]
+    code = [s for s in result.refs if not is_data_path(s.path)]
+    data = [s for s in result.refs if is_data_path(s.path)]
+    strong = [s for s in code if s.same_line]
+    weak = [s for s in code if not s.same_line]
     if len(parts) >= 2:
         names = " and ".join(f"`{part}`" for part in parts)
         head = (f"referenced by {len(strong)} files ({names} on one line; "
@@ -128,6 +136,13 @@ def render_refs(store: Store, name: str, limit: int = 20) -> str:
         for site in weak[:limit - shown]:
             lines.append(_site_line(site))
         shown += min(len(weak), limit - shown)
+    # Configs name the type on another line than the key (`"$type"` above
+    # `"p_Member"`), so for them the same-line split means nothing.
+    if data and shown < limit:
+        lines.append(f"data — {len(data)} config files name it (JSON keys/values):")
+        for site in data[:limit - shown]:
+            lines.append(_site_line(site))
+        shown += min(len(data), limit - shown)
     hidden = len(result.refs) - shown
     if hidden > 0:
         lines.append(f"  … {hidden} more files (raise the limit to list them)")

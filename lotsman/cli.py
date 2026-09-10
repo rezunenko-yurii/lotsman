@@ -185,7 +185,8 @@ def cmd_refs(args) -> int:
         payload = {
             "definitions": [asdict(d) for d in result.defs] if result else [],
             "references": [
-                {"path": s.path, "count": s.count, "lines": s.lines}
+                {"path": s.path, "count": s.count, "lines": s.lines,
+                 "data": refsview.is_data_path(s.path)}
                 | ({"same_line": s.same_line} if len(parts) >= 2 else {})
                 for s in refs],
             # Name shared by definitions in several files: references may
@@ -228,6 +229,8 @@ def cmd_change(args) -> int:
             "subtypes": [{"type": t, "path": p, "line": ln} for t, p, ln in rep.subtypes],
             "callers": [{"path": s.path, "lines": s.lines, "same_line": s.same_line,
                          "test": is_test_path(s.path)} for s in rep.callers],
+            "data": [{"path": s.path, "lines": s.lines, "type_named": s.same_line}
+                     for s in rep.data],
             "name_only_files": rep.name_only,
             "extension_method": rep.extension,
             "ambiguous_owners": rep.ambiguous_owners,

@@ -37,7 +37,7 @@ class TestCLI(FixtureRepoMixin, unittest.TestCase):
         self.assertEqual(qualified["confidence"]["resolution"], "name-based")
         self.assertEqual(qualified["references"],
                          [{"path": "pkg/user1.py", "count": 1, "lines": [2],
-                           "same_line": True}])
+                           "data": False, "same_line": True}])
 
     def test_cli_commands_run(self):
         for argv in (

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from lotsman.refsview import RefSite, _site_line
+from lotsman.refsview import RefSite, _site_line, is_data_path
 from lotsman.store import TYPE_KINDS, Store, SymbolRow, enclosing_types
 from lotsman.textutil import is_test_path
 
@@ -19,7 +19,7 @@ MAX_FAMILY_DEPTH = 6
 MAX_FAMILY_TYPES = 200
 CALLERS_SHOWN = 25
 IMPLS_SHOWN = 20
-NOT_COVERED = "JSON/asset configs and reflection by string name"
+NOT_COVERED = "asset (prefab/scene) references and reflection by string name"
 
 
 @dataclass
@@ -38,6 +38,7 @@ class ChangeReport:
     impls: list[Impl] = field(default_factory=list)         # in subtypes
     subtypes: list[tuple[str, str, int]] = field(default_factory=list)  # type, path, line
     callers: list[RefSite] = field(default_factory=list)
+    data: list[RefSite] = field(default_factory=list)  # configs; same_line = type named
     name_only: int = 0
     extension: bool = False
     ambiguous_owners: list[str] = field(default_factory=list)
@@ -148,6 +149,12 @@ def collect_change(store: Store, target: str) -> ChangeReport | None:
             family_lines.setdefault(row.path, set()).add(0)
     strong, weak = [], []
     for path, count, lines in sites:
+        if is_data_path(path):
+            # A config breaks when the member is renamed even if it never
+            # names the type (`"$merge": "Union"`): list it, say which.
+            named = bool(family_lines.get(path)) if gated else True
+            rep.data.append(RefSite(path, count, lines, named))
+            continue
         if not gated:
             (strong if not rep.ambiguous_owners else weak).append(
                 RefSite(path, count, lines, not rep.ambiguous_owners))
@@ -162,7 +169,8 @@ def collect_change(store: Store, target: str) -> ChangeReport | None:
             weak.append(RefSite(path, count, lines, False))
     order = lambda s: (-len(s.lines), s.path)  # noqa: E731
     rep.callers = sorted(strong, key=order) + sorted(weak, key=order)
-    return rep if rep.defs or rep.callers or rep.impls or rep.name_only else None
+    rep.data.sort(key=lambda s: (not s.same_line, s.path))
+    return rep if rep.defs or rep.callers or rep.impls or rep.name_only or rep.data else None
 
 
 def _owners_of(store: Store, row: SymbolRow) -> set[str]:
@@ -210,6 +218,11 @@ def render_change(store: Store, target: str, limit: int = CALLERS_SHOWN) -> str:
             lines.append(f"  … {len(rep.callers) - limit} more files (raise the limit)")
     else:
         lines.append("callers: none found")
+    if rep.data:
+        named = sum(1 for s in rep.data if s.same_line)
+        lines.append(f"data — {len(rep.data)} config files ({named} name the type):")
+        for site in rep.data[:limit]:
+            lines.append(_site_line(site) + ("" if site.same_line else "  (name only)"))
     if rep.name_only:
         lines.append(f"name-only: {rep.name_only} more files use `{rep.member}` on types "
                      f"outside this family (not listed; `refs {rep.member}` lists them)")

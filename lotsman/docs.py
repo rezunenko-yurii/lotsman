@@ -157,21 +157,24 @@ def normalize(text: str) -> str:
 
 def terms(text: str) -> list[str]:
     out: list[str] = []
-    for m in _WORD_RE.finditer(text):
-        word = m.group(0)
-        low = word.lower().replace("ё", "е")
-        if _CYRILLIC_RE.search(low):
-            if low in RU_STOPWORDS or len(low) < 2:
-                continue
-            out.append(stem_ru(low))
-            continue
-        if low in EN_STOPWORDS or len(low) < 2 or low.isdigit():
-            continue
-        out.append(low)
-        subs = split_ident(word)
-        if len(subs) > 1:
-            out.extend(s for s in subs if len(s) > 1 and s not in EN_STOPWORDS)
+    for word in _WORD_RE.findall(text):
+        out.extend(_word_terms(word))
     return out
+
+
+@lru_cache(maxsize=262144)  # per word: the vocabulary is far smaller than the text
+def _word_terms(word: str) -> tuple[str, ...]:
+    low = word.lower().replace("ё", "е")
+    if _CYRILLIC_RE.search(low):
+        if low in RU_STOPWORDS or len(low) < 2:
+            return ()
+        return (stem_ru(low),)
+    if low in EN_STOPWORDS or len(low) < 2 or low.isdigit():
+        return ()
+    subs = split_ident(word)
+    if len(subs) > 1:
+        return (low, *(s for s in subs if len(s) > 1 and s not in EN_STOPWORDS))
+    return (low,)
 
 
 # ---- Russian stemmer (Snowball algorithm) -----------------------------------
@@ -328,6 +331,8 @@ def docs_for(path: str, doc_paths: set[str]) -> str | None:
                  for name in by_dir.get(posixpath.join(base, sub) if sub else base, ())]
         if not found:
             continue
+        if not base:
+            return None  # repo-root docs: agents read those first anyway
         found.sort(key=lambda sn: (_doc_order(sn[1]), _DOC_DIRS.index(sn[0])))
         shown, hidden = found[:MAX_DOCS_LISTED], len(found) - MAX_DOCS_LISTED
         groups: dict[str, list[str]] = {}

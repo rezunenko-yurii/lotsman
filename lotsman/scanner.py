@@ -37,6 +37,8 @@ LANG_BY_EXT = {
     ".bash": "bash",
     ".md": "markdown",
     ".markdown": "markdown",
+    ".json": "json",
+    ".rc": "json",   # remote-config JSON in Unity projects; content-sniffed
 }
 
 SKIP_DIRS = frozenset({

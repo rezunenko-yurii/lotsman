@@ -402,14 +402,19 @@ def render_define_sites(pd) -> list[str]:
     return [f"project defines: {sites}; {rsp}"]
 
 
-def render_unity(store, target: str, uses: str | None = None, root=None) -> str:
+def render_unity(store, target: str, uses: str | None = None, root=None,
+                 log: str | None = None) -> str:
     """`unity TARGET [USES]`: the assembly compiling TARGET (file, type or
     assembly), its references and who references it, the targets it builds
     for and its `#if` branches per target; with USES, whether TARGET's
-    assembly can see the assembly of USES."""
+    assembly can see the assembly of USES. `unity errors`: compile errors of
+    the last compilation in the Editor log (`log` overrides the location)."""
     project = load(store)
     if project is None:
         return "(not a Unity project: no ProjectSettings/ at or above the indexed folder)"
+    if target.strip() == "errors" and root is not None and not store.has_file("errors"):
+        from lotsman import unitylog
+        return unitylog.render_errors(store, root, log)
     hits = _locate(store, project, target)
     if not hits:
         return f"(`{target}`: no indexed file, assembly or C# symbol by that name)"

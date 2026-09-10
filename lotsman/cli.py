@@ -249,7 +249,7 @@ def cmd_unity(args) -> int:
     from lotsman import unity
     root = _root(args)
     store = _open(root)
-    out = unity.render_unity(store, args.target, args.uses, root=root)
+    out = unity.render_unity(store, args.target, args.uses, root=root, log=args.log)
     store.close()
     print(out)
     return 1 if out.startswith("(") else 0
@@ -404,10 +404,14 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
                                       "compiling a file/type, its references, who "
-                                      "references it, #if branches per target")
-    sp.add_argument("target", help="file path, type/symbol name or assembly name")
+                                      "references it, #if branches per target; "
+                                      "`unity errors`: compile errors")
+    sp.add_argument("target", help="file path, type/symbol name, assembly name, or "
+                                   "`errors` (compile errors from the Editor log)")
     sp.add_argument("uses", nargs="?", help="type, file or assembly the target's "
                                             "code wants to use: is it visible?")
+    sp.add_argument("--log", help="Editor log for `unity errors` (default: the "
+                                  "project's Logs/Editor.log, then the OS location)")
     sp.set_defaults(fn=cmd_unity)
 
     sp = sub.add_parser("stats", help="index statistics")

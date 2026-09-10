@@ -5,8 +5,8 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10 (later session): A1 and P1 done and committed too;
-**next: U0** (design notes under U0; the P1 notes there are implemented). Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-10 (later session): A1, P1 and U0 done and committed too;
+**next: V1, then G1 → U1, X1–X5**. B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -359,7 +359,7 @@ report also shows the dead `!UNITY_2018_1_OR_NEWER` branch); **all 28:
 0.16–0.17 s; `bench_unity.py` gates pass; five corpus benches not rerun (no C#
 there; C# fixture tests green).
 
-**U0. `unity` facts command (new command, folded into one MCP tool with C1
+**U0. `unity` facts command ✅ (new command, folded into one MCP tool with C1
 if the tool budget requires).** `lotsman unity [file|type]`: assembly and its
 references, platforms, active defines per platform, and **compile errors from
 Editor.log** (`error CS…` → `file:line`, with `staleLog` / `errorsPredateEdits`
@@ -367,7 +367,29 @@ flags; idea from Unity Open MCP).
 - Done when: errors parsed on real logs from Unity 2022/6000; staleness flags
   tested.
 
-Design notes for P1 + U0 (worked out 2026-09-10, not implemented):
+Status 2026-09-10 — implemented (`lotsman/unitylog.py`; `unity errors
+[--log PATH]`, MCP `unity` with target `errors` + `log`): segments at
+compile-start markers, last segment with compiler output = last compilation;
+`path(line,col): error|warning CODE: msg` (backslashes normalised), fileless
+`error CSxxxx` lines kept; dedupe; warnings counted by code; earlier distinct
+errors counted when the last compilation is clean. Log choice: `--log`, else
+`<project>/Logs/Editor.log` and the OS location, preferring the one whose
+`-projectpath` matches (another project's log → refusal, no errors listed).
+Staleness from the log mtime vs indexed `.cs`/`.asmdef`/`.asmref` mtimes.
+Only the version line, the project path and compiler lines are read.
+
+Measured: B0 (`b0_u0_2026-09-10.json`): **errors found 0.50 → 1.00**
+(err-02 staleness trap caught: the WindowsManager.cs error line is marked
+`[file edited after the log]`; question got `accept_output` for that line),
+507 tokens / 2 calls vs 330 / 3; **all 28: 132,287 → 45,869 tokens (−65%),
+found 0.96 → 0.99**. Done criterion: parsed on a real 6000.3 log (the user's
+live Editor.log — clean — and the fixture: that log with injected errors);
+the 2022 case is a synthetic log in `tests/test_unitylog.py` (no real 2022
+log with errors available — **not verified on a real 2022 log**); staleness,
+other-project, clean-after-failure and dedupe tested. `unity errors` 0.18 s.
+MCP tool text 9 tools / ~1,156 tokens.
+
+Design notes for P1 + U0 (worked out 2026-09-10; implemented as above):
 - `#if` regions: line-based scan of `#if/#elif/#else/#endif` (C# directives
   are whole lines; tree-sitter shows them as `preproc_if/elif/else` but breaks
   on unbalanced branches). Store per C# file the regions with the *effective*

@@ -81,6 +81,7 @@ the `lotsman` command is not installed, use `python3 -m lotsman`.
 | Symbol/API change | `change Type.Member` (overrides + family callers); `refs Class.Method` for plain usages |
 | File or batch change | `impact` before and after editing |
 | Unity: which assembly, will a dependency compile, does `#if` code run on a platform | `unity FILE [USES]` |
+| Unity: does the project compile after edits | `unity errors` (check its stale flag) |
 | Need test candidates | `impact --tests` / MCP impact with `tests: true` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `report` |
 | Need broader context | Increase map budget only with mention/focus |
@@ -124,6 +125,7 @@ checkout, use that command prefix instead.
 | Symbol/API change | `lotsman change Type.Member` (overrides + family callers); `lotsman refs Class.Method` for plain usages |
 | File or batch change | `lotsman impact <files>` before and after editing |
 | Unity: which assembly, will a dependency compile, does `#if` code run on a platform | `lotsman unity <file> [<Type>]` |
+| Unity: does the project compile after edits | `lotsman unity errors` (check its stale flag) |
 | Need test candidates | `lotsman impact <files> --tests` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `lotsman report` |
 | Need broader context | Increase map budget only with `--mention` or `--focus` |

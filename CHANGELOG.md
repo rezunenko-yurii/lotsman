@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`lotsman unity errors` — compile errors from the Editor log.** Reads the
+  last compilation only (earlier errors may be fixed), dedupes repeats,
+  counts warnings apart, lists `file:line:col CODE message` relative to the
+  index, and flags staleness: files edited after the log was written are
+  named (files with errors first) and marked on their error lines — "these
+  errors may predate those edits". Finds the log in the project's
+  `Logs/Editor.log` or the OS location (macOS, Windows, Linux), prefers the
+  one whose `-projectpath` is this project, refuses to report another
+  project's log; `--log PATH` for batchmode `-logFile`s. Only compiler lines
+  and the project path are read — the log header carries access tokens.
 - **`#if` and define symbols (Unity).** C# `#if/#elif/#else` branches are
   indexed with their effective condition (`#else` of `#if A` is `!A`, nesting
   ANDed). `outline` marks symbols under a condition (`[#if UNITY_IOS]`, only

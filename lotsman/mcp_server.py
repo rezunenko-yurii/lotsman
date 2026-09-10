@@ -142,11 +142,14 @@ TOOLS = [
         "description": ("Unity project facts: the assembly (asmdef) compiling a "
                         "file or type, its references and who references it, "
                         "targets it builds for, #if branches per platform/Editor; "
-                        "with `uses`, whether that code can see another type."),
+                        "with `uses`, whether that code can see another type. "
+                        "target `errors`: compile errors from the Editor log, "
+                        "flagged when edits are newer than the log."),
         "inputSchema": {
             "type": "object",
             "properties": {"target": {"type": "string",
-                                      "description": "file, type or assembly name"},
+                                      "description": "file, type, assembly or `errors`"},
+                           "log": {"type": "string", "description": "Editor log path"},
                            "uses": {"type": "string",
                                     "description": "type/file/assembly to check visibility of"}},
             "required": ["target"],
@@ -250,7 +253,7 @@ class McpServer:
     def _tool_unity(self, args: dict) -> str:
         from lotsman import unity
         return unity.render_unity(self.store, args["target"], args.get("uses"),
-                                  root=self.root)
+                                  root=self.root, log=args.get("log"))
 
     def _tool_refs(self, args: dict) -> str:
         return refsview.render_refs(

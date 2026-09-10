@@ -14,7 +14,9 @@ agent would make on each path — and records:
                         read (optional files ignored); `noise` = other source
                         files that surfaced;
             file_lines  share of expected (file, line) locations surfaced;
-            value       the evidence location was read or shown.
+            value       the evidence location was read or shown (no evidence:
+                        both files stat-ed, or a lotsman output matched the
+                        question's `accept_output` regex).
 
 Plans per question, e.g. `baseline` (grep + reads, no lotsman) and `lotsman16`
 (an agent following the lotsman policy today, falling back to grep where
@@ -82,6 +84,7 @@ class Seen:
     spans: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
     mentions: dict[str, set[int]] = field(default_factory=dict)  # 0 = path only
     stats: set[str] = field(default_factory=set)
+    outputs: list[str] = field(default_factory=list)  # lotsman outputs, for accept_output
 
     def read(self, path: str, first: int, last: int) -> None:
         self.spans.setdefault(path, []).append((first, last))
@@ -165,6 +168,7 @@ class Runner:
                 out = self._proc([sys.executable, "-m", "lotsman", "--repo",
                                   str(self.assets), *args], REPO, env=env)
                 self._collect(out, "assets", seen, from_grep=False)
+                seen.outputs.append(out)
                 last_lotsman = out
             elif op == "read_doc_hits":
                 ranges = re.findall(r"^  (\S+\.md):(\d+)-(\d+)  ", 
@@ -273,8 +277,10 @@ def score(q: dict, seen: Seen, assets_prefix: str) -> tuple[float, int]:
         return sum(seen.covered(p, ln) for p, ln in locs) / len(locs), 0
     if kind == "value":
         ev = e.get("evidence")
-        if not ev:  # staleness-type answers: both files must have been stat-ed
-            return (1.0 if len(seen.stats) >= 2 else 0.0), 0
+        if not ev:  # staleness-type answers: both files stat-ed, or a tool said it
+            said = e.get("accept_output") and any(
+                re.search(e["accept_output"], out) for out in seen.outputs)
+            return (1.0 if len(seen.stats) >= 2 or said else 0.0), 0
         path, _, line = ev.rpartition(":")
         path = path if path.startswith(("Assets/", "ProjectSettings/")) else _proj(path, root, assets_prefix)
         return (1.0 if seen.covered(path, int(line)) else 0.0), 0

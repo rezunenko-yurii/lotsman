@@ -528,6 +528,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups |
 | `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked |
 | `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it, build targets and `#if` verdicts per target; with USES, whether TARGET's code can see it |
+| `lotsman unity errors [--log PATH]` | Unity: errors of the last compilation in the Editor log, deduped, with a staleness flag when sources changed after the log |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |

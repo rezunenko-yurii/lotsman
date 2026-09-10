@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import extract, scanner, wiring
+from lotsman import docs, extract, scanner, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
+# Env override for the index file: benchmarks and CI caches keep an index
+# outside a read-only or shared project (different lotsman versions on one
+# index would rebuild it back and forth).
+INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "4"
+INDEX_VERSION = "5"
 
 
 @dataclass
@@ -39,8 +44,27 @@ def _looks_generated(data: bytes) -> bool:
     return any(len(line) > MAX_LINE_LEN for line in head.split(b"\n"))
 
 
+def _binding_docs(root: Path, store: Store) -> set[str]:
+    """Docs that some AGENTS.md declares binding (read in full)."""
+    known = store.doc_paths()
+    found: set[str] = set()
+    for path in known:
+        if path.rsplit("/", 1)[-1] in ("AGENTS.md", "CLAUDE.md"):
+            try:
+                text = (root / path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            found |= docs.binding_docs(path, text, known)
+    return found
+
+
+def db_path(root: Path) -> Path:
+    env = os.environ.get(INDEX_ENV)
+    return Path(env).expanduser() if env else root / DB_RELPATH
+
+
 def open_store(root: Path) -> Store:
-    return Store(root / DB_RELPATH)
+    return Store(db_path(root))
 
 
 def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
@@ -79,6 +103,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
     store.set_meta("degraded", json.dumps(result.degraded, ensure_ascii=False))
     known = store.known_files()
     seen_paths = set()
+    docs_changed = False
 
     for rec in records:
         seen_paths.add(rec.path)
@@ -101,8 +126,19 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
                 (rec.mtime, rec.size, rec.path))
             result.unchanged += 1
             continue
+        doc_text = None
         try:
-            if _looks_generated(data):
+            if rec.lang == "markdown":
+                # Prose has long lines by nature: no generated-file check. Docs
+                # add sections, never references (refs stay about code).
+                sections = docs.parse_sections(data, rec.path)
+                symbols = [extract.Symbol(s.name, docs.SECTION_KIND, s.line,
+                                          s.end_line, s.signature) for s in sections]
+                idents, lines = Counter(), {}
+                doc_text = {(s.name, s.line): (s.heading_terms, s.body_terms)
+                            for s in sections}
+                docs_changed = True
+            elif _looks_generated(data):
                 symbols, idents, lines = [], Counter(), {}  # record the file only
             else:
                 symbols = extract.extract_symbols(rec.lang, data)
@@ -117,7 +153,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines)
+            idents, lines, doc_text)
         if prev is None:
             result.added += 1
         else:
@@ -127,6 +163,10 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
     if gone:
         store.delete_files(gone)
         result.removed = len(gone)
+        docs_changed = docs_changed or any(p.endswith(".md") for p in gone)
+    if docs_changed or store.get_meta("binding_docs") is None:
+        store.set_meta("binding_docs", json.dumps(
+            sorted(_binding_docs(root, store)), ensure_ascii=False))
 
     store.commit()
     if result.removed > 200:  # reclaim space after mass removals (.lotsmanignore edits)

@@ -34,7 +34,7 @@ def _root(args) -> Path:
 
 def _open(root: Path, auto_index: bool = True) -> Store:
     """Open the index, keeping read commands fresh before serving results."""
-    db = root / indexer.DB_RELPATH
+    db = indexer.db_path(root)
     if not db.exists():
         if not auto_index:
             sys.exit("error: no index found — run `lotsman index` first")
@@ -108,17 +108,27 @@ def cmd_search(args) -> int:
     store = _open(root)
     t0 = time.monotonic()
     hits = search_mod.search(store, args.query, limit=args.limit, mode=args.mode)
+    doc_hits = search_mod.search_docs(store, args.query, limit=args.docs, root=root)
+    binding = store.binding_docs()
     store.close()
     if args.json:
+        # Doc sections come after code hits in the same list, shaped like
+        # symbols (kind "section") plus a snippet.
         print(json.dumps(
-            [{"score": round(h.score, 3), **asdict(h.symbol)} for h in hits],
+            [{"score": round(h.score, 3), **asdict(h.symbol)} for h in hits]
+            + [{"score": round(d.score, 3), "path": d.path, "name": d.signature.lstrip("# "),
+                "kind": "section", "line": d.line, "end_line": d.end_line,
+                "signature": d.signature, "snippet": d.snippet,
+                "binding": d.path in binding} for d in doc_hits],
             ensure_ascii=False))
     else:
-        if not hits:
+        if not hits and not doc_hits:
             print("(no results)")
         for h in hits:
             print(f"{h.score:6.2f}  {h.symbol.path}:{h.symbol.line}  "
                   f"[{h.symbol.kind}] {h.symbol.signature}")
+        for line in search_mod.render_doc_hits(doc_hits, binding):
+            print(line)
     print(f"[lotsman] search in {time.monotonic() - t0:.2f}s", file=sys.stderr)
     return 0
 
@@ -127,6 +137,7 @@ def cmd_outline(args) -> int:
     root = _root(args)
     store = _open(root)
     rows = store.symbols_in_file(args.file)
+    header = outlineview.outline_header(store, args.file, rows) if rows else []
     store.close()
     if args.json:
         print(json.dumps([asdict(r) for r in rows], ensure_ascii=False))
@@ -135,7 +146,7 @@ def cmd_outline(args) -> int:
         print(f"(no symbols indexed for {args.file})")
         return 1
     print(f"{args.file}:")
-    print("\n".join(outlineview.outline_rows(rows)))
+    print("\n".join([*header, *outlineview.outline_rows(rows)]))
     return 0
 
 
@@ -309,6 +320,9 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--mode", choices=["auto", "hybrid", "bm25", "vector"],
                     default="auto",
                     help="auto = hybrid when vectors exist, else bm25")
+    sp.add_argument("--docs", type=int, default=search_mod.DOCS_LIMIT,
+                    help="Markdown sections to add after code hits "
+                         f"(default {search_mod.DOCS_LIMIT}; 0 = none)")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_search)
 

@@ -44,7 +44,8 @@ TOOLS = [
         "name": "search",
         "description": (
             "Hybrid (BM25 + semantic vector, RRF-fused) search over all "
-            "symbols. Use instead of grep when looking for code by meaning, "
+            "symbols, plus the best Markdown doc sections (path:start-end). "
+            "Use instead of grep when looking for code or docs by meaning, "
             "e.g. 'retry backoff logic'. Returns path:line with signatures."),
         "inputSchema": {
             "type": "object",
@@ -168,17 +169,21 @@ class McpServer:
             self.store, args["query"],
             limit=int(args.get("limit") or 10),
             mode=args.get("mode") or "auto")
-        if not hits:
+        doc_hits = search_mod.search_docs(self.store, args["query"], root=self.root)
+        if not hits and not doc_hits:
             return "(no results)"
-        return "\n".join(
-            f"{h.symbol.path}:{h.symbol.line}  [{h.symbol.kind}] {h.symbol.signature}"
-            for h in hits)
+        lines = [f"{h.symbol.path}:{h.symbol.line}  [{h.symbol.kind}] {h.symbol.signature}"
+                 for h in hits]
+        lines += search_mod.render_doc_hits(doc_hits, self.store.binding_docs())
+        return "\n".join(lines)
 
     def _tool_outline(self, args: dict) -> str:
         rows = self.store.symbols_in_file(args["file"])
         if not rows:
             return f"(no symbols indexed for {args['file']})"
-        return "\n".join([f"{args['file']}:", *outlineview.outline_rows(rows)])
+        return "\n".join([f"{args['file']}:",
+                          *outlineview.outline_header(self.store, args["file"], rows),
+                          *outlineview.outline_rows(rows)])
 
     def _tool_defs(self, args: dict) -> str:
         rows = self.store.symbols_named(args["name"])

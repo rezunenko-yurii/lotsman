@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from lotsman.store import NOT_MEMBER_SQL, Store, SymbolRow
+from lotsman.store import RANKED_SQL, Store, SymbolRow
 
 DEFAULT_MODEL = "minishlab/potion-base-8M"
 BATCH_SIZE = 4096
@@ -58,7 +58,7 @@ def embed_missing(store: Store) -> int:
         rows = store.conn.execute(
             "SELECT s.id, f.path, s.name, s.kind, s.line, s.end_line, s.signature "
             "FROM symbols s JOIN files f ON f.id = s.file_id "
-            f"WHERE s.vector IS NULL AND {NOT_MEMBER_SQL} "  # members: not searched
+            f"WHERE s.vector IS NULL AND {RANKED_SQL} "  # members, doc sections: not embedded
             "LIMIT ?", (BATCH_SIZE,)).fetchall()
         if not rows:
             break

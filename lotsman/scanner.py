@@ -35,6 +35,8 @@ LANG_BY_EXT = {
     ".lua": "lua",
     ".sh": "bash",
     ".bash": "bash",
+    ".md": "markdown",
+    ".markdown": "markdown",
 }
 
 SKIP_DIRS = frozenset({

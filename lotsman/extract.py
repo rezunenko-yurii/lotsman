@@ -107,6 +107,7 @@ DEF_QUERIES: dict[str, str] = {
         (event_field_declaration (variable_declaration
             (variable_declarator name: (identifier) @def.event)))
         (event_declaration name: (identifier) @def.event)
+        (enum_member_declaration name: (identifier) @def.field)
     """,
     "php": """
         (function_definition name: (name) @def.function)
@@ -424,6 +425,7 @@ _DEF_NODE_TYPES = frozenset({
     "struct_specifier", "enum_specifier", "class_specifier", "type_definition",
     "struct_declaration", "property_declaration", "constructor_declaration",
     "event_declaration", "delegate_declaration", "record_declaration",
+    "enum_member_declaration",
     "method", "class", "module",
 })
 

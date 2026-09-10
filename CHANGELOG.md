@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Markdown docs are indexed.** Headings become sections: `outline file.md`
+  shows the heading tree with line ranges, and `search` adds a `docs:` block
+  after the code hits — the section's own range plus a one-line snippet, so an
+  agent reads 20 lines instead of a 600-line guide. Russian and English text
+  (Snowball Russian stemming, `ё`→`е`, identifier subwords), SQLite FTS5;
+  `search --docs N` (default 3, 0 = none). Docs never displace code hits and
+  stay out of `defs`/`refs`, the map and embeddings. On a Unity project's
+  question set, docs answers cost 29% less overall and 80–87% less when the
+  section ranks in the top 3 (6 of 10 questions); cross-language questions
+  (Russian question, English doc) still miss.
+- **Docs next to code.** `outline` of a source file names the nearest module
+  docs in one line (`docs: Mod/{AGENTS.md, MAP.md} · Editor/Documentation/…`).
+- **Binding docs.** A document an `AGENTS.md` calls binding (`binding`,
+  `обязателен`) is marked in `outline` and `search`: read it in full.
+- **`LOTSMAN_INDEX`** relocates the index file — for benchmarks and CI caches
+  that must not touch a project's own index.
+- `doctor` reports whether SQLite has FTS5 (docs search).
+- Index format 5: the first run rebuilds the index.
 - **Query log covers the CLI and switches itself off.** A flag file
   `.lotsman/querylog.on` under the indexed root turns logging on for CLI read
   commands (`map`, `search`, `outline`, `slice`, `defs`, `refs`, `impact`) and

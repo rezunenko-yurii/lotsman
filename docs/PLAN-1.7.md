@@ -99,8 +99,10 @@ How to read it:
   (err-02 staleness trap: 0/1), so judge A1/P1/U0 by `found`, not tokens.
 
 Found while measuring (add to C1/J1):
-- [ ] enum members are not indexed as definitions: `refs ArrayMergeStrategy.Union`
-  shows two `Union` *methods* of another class under "defined in".
+- [x] enum members are not indexed as definitions: `refs ArrayMergeStrategy.Union`
+  shows two `Union` *methods* of another class under "defined in". Fixed with
+  D1: C# enum members are `field` symbols (outline collapses them; not ranked);
+  the right definition shows and `ArrayMergeApplier.cs` is back in the refs.
 - [ ] enum/member names inside C# string literals (test JSON) are invisible to
   AST refs (change-06 misses `NodeConfigCompositionPipelineTests.cs`) —
   candidate for J1's string scan or an explicit "strings" hint.
@@ -137,6 +139,40 @@ the question set and priorities.
 - Docs stay out of the code map ranking.
 - Done when: docs questions in B0 find the expected section in top-3 and
   cost ≤ 25% of the baseline tokens; cold index ≤ +60%.
+
+Status 2026-09-10 — implemented (uncommitted in the 1.7 branch):
+`lotsman/docs.py` (ATX/setext headings, code/front matter/comments skipped,
+Snowball Russian stemmer, `ё`→`е`, identifier subwords), sections stored as
+`kind: section` (outline only; not defs/refs/map/code search/embeddings),
+FTS5 table `docs_fts` (heading chain weight 4, own text 1; Russian stems
+prefix-matched), `search` prints a `docs:` block after code hits with the
+section's *own* range and a snippet read from disk, `outline` of code prints
+one `docs:` line (nearest module, most useful docs first), binding docs
+detected in AGENTS.md/CLAUDE.md and marked, `doctor` reports FTS5,
+`LOTSMAN_INDEX` env relocates the index file (benchmarks must not rebuild a
+project's live index). `INDEX_VERSION` 5.
+
+Measured (B0 docs, authored agent queries; `lotsman17` = search → read top-3
+doc hits → grep fallback only if the answer was not seen):
+- expected section in top-3: **6/10** (01, 02, 06, 08, 09, 10), 7/10 in top-10;
+- tokens: **36,742 vs 51,620 baseline (−29%, 71% of baseline)**; a hit costs
+  1.1–1.6k tokens (−80…−87%), a miss ~1.5k more than baseline;
+- **not met: ≤ 25% of baseline.** The 4 misses are lexical gaps, not bugs:
+  3 are Russian queries against English decision docs (ExDi / GameSdkBeta
+  DECISIONS.md, BUILD_ASSURANCE_DECISIONS.md), 1 lands on a sibling section of
+  the same topic. Latin prefix matching and weight changes did not move them.
+- cold index SDK-Kitchen 2.5 s → 3.8 s (+53%, met); DB 6.5 → 26 MB without
+  embeddings; `refs`/`outline` 0.16–0.17 s (≤ 0.3, met); no-op reindex 0.11 s.
+- no regressions: Django/WordPress/Vite/Gin/ripgrep gates pass with unchanged
+  savings; Unity refs recall and map identical; MCP tool text +2%.
+
+Whole B0 on 1.7 code after D1 (`b0_d1_2026-09-10.json`): **98,885 tokens vs
+132,287 baseline (−25%) and 115,804 with lotsman 1.6 (−15%)**; docs 36,742,
+change 9,519, data 47,626, assembly 4,668, errors 330.
+
+Options for the misses (decision pending): multilingual embeddings for doc
+sections as an optional extra; a search hint telling agents to mix English and
+Russian terms; `outline` of the top hit's file as the fallback instead of grep.
 
 **C1. `change Type.Member` (new command + MCP tool).**
 One capped report: definition(s) and signature; overrides / implementations

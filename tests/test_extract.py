@@ -138,6 +138,16 @@ class TestCSharpDeclarations(unittest.TestCase):
         self.assertEqual(syms["Done"].kind, "type")     # delegate
         self.assertEqual(syms["Point"].kind, "class")   # record
 
+    def test_enum_members_are_member_definitions(self):
+        # `refs ArrayMergeStrategy.Union` used to show two `Union` methods of
+        # another class as the definition: enum members were not indexed.
+        src = (b"public enum ArrayMergeStrategy\n{\n    Override,\n"
+               b"    Union = 3,\n}\npublic enum Tiny { A1, B2 }\n")
+        syms = {(s.name, s.kind, s.line, s.signature)
+                for s in extract.extract_symbols("csharp", src)}
+        self.assertIn(("Union", "field", 4, "Union = 3"), syms)
+        self.assertIn(("B2", "field", 6, "B2"), syms)
+
     def test_java_annotations_skipped(self):
         src = (b"@Service\n"
                b"public class Svc {\n"

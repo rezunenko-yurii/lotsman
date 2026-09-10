@@ -308,8 +308,8 @@ the agent should only see the next useful piece.
 | `map --budget N` | Ranked `path:line` symbols and signatures | Function bodies or all symbols | You need orientation |
 | `map --mention X` | A map re-ranked around a term | A saved subsystem summary | You know the feature/domain/API word |
 | `map --focus file.py` | A map biased by a file already in context | A file outline | You need surrounding dependencies |
-| `search "query"` | Candidate definitions by name/meaning | Raw grep lines or bodies | You need likely implementation locations |
-| `outline file.py` | Symbols and line ranges in one file | File contents | You want to choose a line range |
+| `search "query"` | Candidate definitions by name/meaning, then the best Markdown sections (`docs:` block, own line range + snippet) | Raw grep lines or bodies | You need likely implementation locations or the doc section that explains them |
+| `outline file.py` | Symbols and line ranges in one file; for code, one line naming the module docs; for `.md`, the heading tree | File contents | You want to choose a line range |
 | `defs NAME` | Definitions of a symbol name | Usage sites | You need declarations |
 | `refs NAME` | Name-based usage candidates as `path:line,line` | Type-resolved proof | You need places to inspect |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
@@ -381,6 +381,7 @@ Lotsman works best when code has stable named symbols in ordinary source files.
 | Fit | Languages / files | What you get |
 |---|---|---|
 | Best | Python, JavaScript, TypeScript/TSX, Go, Rust, Java, C/C++, Ruby, C#, PHP | tree-sitter definitions; tree-sitter references except PHP, where references are lexical today |
+| Docs | Markdown (`.md`) | heading sections in `outline`, full-text section search in Russian and English (needs SQLite FTS5; `doctor` checks), binding docs marked |
 | Useful fallback | Kotlin, Swift, Scala, Lua, Bash and other source-like text | file discovery, regex definitions where patterns match, lexical identifiers |
 | Needs cleanup | minified bundles, generated code, vendored SDKs, copied dependencies | noisy maps unless ignored |
 | Out of scope | cross-repo type resolution, runtime reflection, DI wiring, serialized scene refs | candidate discovery only |
@@ -515,7 +516,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman update [--agent codex|claude|cursor] [--no-index]` | refresh managed agent artifacts and the index after Lotsman or source changes |
 | `lotsman index [--verify] [--no-embed]` | build/update the index |
 | `lotsman map [--budget N] [--focus F] [--mention X]` | return a token-budgeted repo map |
-| `lotsman search "query" [--mode auto|hybrid|bm25|vector]` | find likely symbols/files by meaning/name |
+| `lotsman search "query" [--mode auto|hybrid|bm25|vector] [--docs N]` | find likely symbols/files by meaning/name, plus N Markdown sections (default 3) |
 | `lotsman outline FILE` | show symbol ranges in one file |
 | `lotsman slice FILE TARGET` | return one symbol body plus its local skeleton (enclosing types, nearest siblings) |
 | `lotsman defs NAME` | show definitions of a symbol |

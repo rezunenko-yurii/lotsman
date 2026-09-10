@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -52,8 +53,12 @@ CREATE INDEX IF NOT EXISTS idx_idents_file ON idents(file_id);
 # and methods those rank (measured on a Unity corpus: top-10 overlap fell to
 # 2/10 on some queries).
 MEMBER_KINDS = ("field", "event")
-# SQL filter on the `symbols s` alias.
-NOT_MEMBER_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in MEMBER_KINDS)
+# Markdown heading sections: listed by outline and found by docs search
+# (FTS5 over their text), never ranked, code-searched or named by defs/refs.
+DOC_KINDS = ("section",)
+UNRANKED_KINDS = MEMBER_KINDS + DOC_KINDS
+# SQL filter on the `symbols s` alias: symbols that rank, embed and code-search.
+RANKED_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in UNRANKED_KINDS)
 
 MAX_LINES_PER_ROW = 64  # enough for any per-file listing; bounds DB growth
 
@@ -118,6 +123,17 @@ class Store:
             self.conn.execute(
                 "ALTER TABLE idents ADD COLUMN lines TEXT NOT NULL DEFAULT ''")
             self.conn.commit()
+        # Docs search: one FTS5 row per section, rowid = symbols.id. Terms are
+        # pre-normalized (see docs.normalize: Russian stemming), so the default
+        # tokenizer only splits on spaces. No FTS5 in this SQLite build ->
+        # docs are still outlined, just not searched (doctor reports it).
+        try:
+            self.conn.execute(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5("
+                "heading, body, tokenize = 'unicode61 remove_diacritics 0')")
+            self.has_fts = True
+        except sqlite3.OperationalError:
+            self.has_fts = False
 
     def close(self) -> None:
         self.conn.commit()
@@ -135,6 +151,8 @@ class Store:
     def wipe(self) -> None:
         """Drop all indexed data (schema kept); used on index-version bumps."""
         self.conn.execute("DELETE FROM idents")
+        if self.has_fts:
+            self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
         self.conn.execute("DELETE FROM files")
         self.conn.execute("DELETE FROM rank_cache")
@@ -177,8 +195,11 @@ class Store:
     def upsert_file(self, path: str, sha: str, mtime: float, size: int, lang: str,
                     symbols: list[tuple[str, str, int, int, str]],
                     idents: Counter,
-                    ident_lines: dict[str, list[int]] | None = None) -> None:
-        """Replace a file's index data atomically (caller batches in a transaction)."""
+                    ident_lines: dict[str, list[int]] | None = None,
+                    doc_text: dict[tuple[str, int], tuple[str, str]] | None = None,
+                    ) -> None:
+        """Replace a file's index data atomically (caller batches in a transaction).
+        doc_text: (section name, line) -> (heading terms, body terms)."""
         cur = self.conn.execute("SELECT id FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
         if row:
@@ -186,6 +207,7 @@ class Store:
             self.conn.execute(
                 "UPDATE files SET sha=?, mtime=?, size=?, lang=? WHERE id=?",
                 (sha, mtime, size, lang, file_id))
+            self._delete_doc_text([file_id])
             self.conn.execute("DELETE FROM symbols WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM idents WHERE file_id=?", (file_id,))
         else:
@@ -202,8 +224,28 @@ class Store:
             "INSERT INTO idents(file_id, name, count, lines) VALUES(?,?,?,?)",
             [(file_id, n, c, _encode_lines(ident_lines.get(n)))
              for n, c in idents.items()])
+        if doc_text and self.has_fts:
+            ids = self.conn.execute(
+                "SELECT id, name, line FROM symbols WHERE file_id=? AND kind='section'",
+                (file_id,)).fetchall()
+            self.conn.executemany(
+                "INSERT INTO docs_fts(rowid, heading, body) VALUES(?,?,?)",
+                [(sid, *doc_text[(name, line)]) for sid, name, line in ids
+                 if (name, line) in doc_text])
+
+    def _delete_doc_text(self, file_ids: list[int]) -> None:
+        if not self.has_fts or not file_ids:
+            return
+        ph = ",".join("?" for _ in file_ids)
+        self.conn.execute(
+            "DELETE FROM docs_fts WHERE rowid IN (SELECT id FROM symbols "
+            f"WHERE kind='section' AND file_id IN ({ph}))", file_ids)
 
     def delete_files(self, paths: list[str]) -> None:
+        ph = ",".join("?" for _ in paths)
+        ids = [r[0] for r in self.conn.execute(
+            f"SELECT id FROM files WHERE path IN ({ph})", paths)] if paths else []
+        self._delete_doc_text(ids)
         self.conn.executemany("DELETE FROM files WHERE path = ?", [(p,) for p in paths])
 
     def commit(self) -> None:
@@ -215,7 +257,7 @@ class Store:
         """symbol name -> set of defining file paths."""
         cur = self.conn.execute(
             "SELECT s.name, f.path FROM symbols s JOIN files f ON f.id = s.file_id "
-            f"WHERE {NOT_MEMBER_SQL}")
+            f"WHERE {RANKED_SQL}")
         result: dict[str, set[str]] = defaultdict(set)
         for name, path in cur:
             result[name].add(path)
@@ -232,7 +274,7 @@ class Store:
         cur = self.conn.execute(
             "SELECT f.path, i.name, i.count FROM idents i "
             "JOIN files f ON f.id = i.file_id "
-            f"WHERE i.name IN (SELECT DISTINCT name FROM symbols s WHERE {NOT_MEMBER_SQL})")
+            f"WHERE i.name IN (SELECT DISTINCT name FROM symbols s WHERE {RANKED_SQL})")
         result: dict[str, Counter] = defaultdict(Counter)
         for path, name, count in cur:
             result[path][name] = count
@@ -244,7 +286,7 @@ class Store:
         cur = self.conn.execute(
             "SELECT f.path, s.name, s.kind, s.line, s.end_line "
             "FROM symbols s JOIN files f ON f.id = s.file_id "
-            f"WHERE {NOT_MEMBER_SQL}")
+            f"WHERE {RANKED_SQL}")
         by_file: dict[str, list[tuple[str, str, int, int]]] = defaultdict(list)
         for path, name, kind, line, end in cur:
             if path.endswith(suffixes):
@@ -261,14 +303,14 @@ class Store:
         """Rankable/searchable symbols (member kinds excluded)."""
         cur = self.conn.execute(
             "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature "
-            f"FROM symbols s JOIN files f ON f.id = s.file_id WHERE {NOT_MEMBER_SQL}")
+            f"FROM symbols s JOIN files f ON f.id = s.file_id WHERE {RANKED_SQL}")
         return [SymbolRow(*row) for row in cur]
 
     def symbols_with_vectors(self) -> list[tuple[SymbolRow, bytes]]:
         cur = self.conn.execute(
             "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature, s.vector "
             "FROM symbols s JOIN files f ON f.id = s.file_id "
-            f"WHERE s.vector IS NOT NULL AND {NOT_MEMBER_SQL}")
+            f"WHERE s.vector IS NOT NULL AND {RANKED_SQL}")
         return [(SymbolRow(*row[:6]), row[6]) for row in cur]
 
     def vector_count(self) -> int:
@@ -287,8 +329,34 @@ class Store:
         cur = self.conn.execute(
             "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature "
             "FROM symbols s JOIN files f ON f.id = s.file_id "
-            "WHERE s.name = ? ORDER BY f.path, s.line", (name,))
+            "WHERE s.name = ? AND s.kind != 'section' ORDER BY f.path, s.line", (name,))
         return [SymbolRow(*row) for row in cur]
+
+    def search_docs(self, match: str, limit: int) -> list[tuple]:
+        """(path, line, own_end, signature, score) for an FTS5 MATCH
+        expression; best first. Headings weigh 4x the section text. own_end
+        stops at the next heading of any level: the text that matched, not
+        the subsections (a `# Findings` hit must not mean reading the file)."""
+        if not self.has_fts or not match:
+            return []
+        try:
+            return self.conn.execute(
+                "SELECT f.path, s.line, COALESCE((SELECT MIN(n.line) - 1 FROM symbols n "
+                "WHERE n.file_id = s.file_id AND n.kind = 'section' AND n.line > s.line), "
+                "s.end_line), s.signature, bm25(docs_fts, 4.0, 1.0) AS score "
+                "FROM docs_fts d JOIN symbols s ON s.id = d.rowid "
+                "JOIN files f ON f.id = s.file_id "
+                "WHERE docs_fts MATCH ? ORDER BY score LIMIT ?",
+                (match, limit)).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    def binding_docs(self) -> set[str]:
+        return set(json.loads(self.get_meta("binding_docs") or "[]"))
+
+    def doc_paths(self) -> set[str]:
+        return {p for (p,) in self.conn.execute(
+            "SELECT path FROM files WHERE lang = 'markdown'")}
 
     def files_referencing(self, name: str) -> list[tuple[str, int]]:
         cur = self.conn.execute(

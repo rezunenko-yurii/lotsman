@@ -30,6 +30,11 @@ lotsman has nothing). A plan is a list of steps:
   ["stat", ROOT, path, ...]
   ["python", code]                               a one-off script the agent would write;
                                                  its source counts as tokens too
+  ["read_doc_hits", k]                           read the ranges of the first k `docs:` hits
+                                                 of the previous lotsman search
+  ["until_found"]                                the agent recognizes an answer it has seen:
+                                                 later steps (a fallback) run only if the
+                                                 expected answer is not reached yet
 ROOT is "assets" or "project"; `EDITOR_LOG` in any argument is replaced by the
 fixture log path. Only these operations run — plans never reach a shell.
 
@@ -67,6 +72,7 @@ GREP_LINE_RE = re.compile(r"^([^:\s][^:]*?\." + SOURCE_EXT + r")(?:[:-](\d+))?(?
 MAX_OUTPUT = 30_000
 MAX_READ_LINES = 2000
 MAX_LINE = 2000  # longer lines are cut (a 2 MB one-line JSON would otherwise dominate)
+A_ROOT = "assets"
 
 
 @dataclass
@@ -92,8 +98,10 @@ class Seen:
 
 
 class Runner:
-    def __init__(self, project: Path, assets: Path, editor_log: Path | None):
+    def __init__(self, project: Path, assets: Path, editor_log: Path | None,
+                 index: Path | None = None):
         self.project, self.assets, self.editor_log = project, assets, editor_log
+        self.index = index
         self.assets_prefix = assets.relative_to(project).as_posix() + "/"
 
     # --- path normalisation --------------------------------------------------
@@ -114,12 +122,19 @@ class Runner:
 
     # --- execution -----------------------------------------------------------
 
-    def run(self, plan: list) -> tuple[int, int, Seen, list[str]]:
-        seen, log, chars = Seen(), [], 0
+    def run(self, plan: list, is_found=None) -> tuple[int, int, Seen, list[str]]:
+        seen, log, chars, calls = Seen(), [], 0, 0
         last_hits: list[tuple[str, int]] = []  # (project path, line or 0)
+        last_lotsman = ""
         for step in plan:
             op, args = step[0], [self.sub(a) for a in step[1:]]
             out = ""
+            if op == "until_found":
+                if is_found and is_found(seen):
+                    log.append("until_found: answer already seen, fallback skipped")
+                    break
+                continue
+            calls += 1
             if op in ("grep", "find", "ls"):
                 root, rest = args[0], args[1:]
                 drop = None
@@ -140,12 +155,20 @@ class Runner:
                     parts.append(self._read("project", path, rng, seen))
                 out = "".join(parts)
             elif op == "lotsman":
+                env = {**os.environ, "PYTHONPATH": str(REPO),
+                       "LOTSMAN_QUERYLOG": "0"}  # never pollute the project's log
+                if self.index:  # keep the project's own index untouched
+                    env["LOTSMAN_INDEX"] = str(self.index)
                 out = self._proc([sys.executable, "-m", "lotsman", "--repo",
-                                  str(self.assets), *args], REPO,
-                                 # never pollute the project's own query log
-                                 env={**os.environ, "PYTHONPATH": str(REPO),
-                                      "LOTSMAN_QUERYLOG": "0"})
+                                  str(self.assets), *args], REPO, env=env)
                 self._collect(out, "assets", seen, from_grep=False)
+                last_lotsman = out
+            elif op == "read_doc_hits":
+                ranges = re.findall(r"^  (\S+\.md):(\d+)-(\d+)  ", 
+                                    last_lotsman.split("\ndocs:\n", 1)[-1]
+                                    if "\ndocs:\n" in last_lotsman else "", re.M)
+                out = "".join(self._read(A_ROOT, p, [a, b], seen)
+                              for p, a, b in ranges[:int(args[0])])
             elif op == "stat":
                 root, paths = args[0], args[1:]
                 lines = []
@@ -163,7 +186,7 @@ class Runner:
                 raise ValueError(f"unknown op {op!r}")
             chars += len(out)
             log.append(f"{op} {' '.join(str(a) for a in args)[:120]} -> {len(out)} chars")
-        return chars // 4, len(plan), seen, log
+        return chars // 4, calls, seen, log
 
     def _proc(self, cmd: list[str], cwd: Path, env=None) -> str:
         res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
@@ -272,6 +295,8 @@ def main() -> int:
     ap.add_argument("--plans", required=True, help="plans JSON: {id: {path_name: [steps]}}")
     ap.add_argument("--paths", default="baseline,lotsman16")
     ap.add_argument("--only", help="comma-separated question ids")
+    ap.add_argument("--index", help="index file for lotsman calls (LOTSMAN_INDEX); "
+                                    "keeps the project's own index untouched")
     ap.add_argument("--json", help="write per-question results here")
     ap.add_argument("--show", help="print the step log of one question id")
     args = ap.parse_args()
@@ -295,14 +320,16 @@ def main() -> int:
             when = (edited.stat().st_mtime - 3600) if "older" in q["fixture"].get("mtime", "") \
                 else time.time()
             os.utime(log_path, (when, when))
-        runner = Runner(project, assets, log_path)
+        runner = Runner(project, assets, log_path,
+                        Path(args.index).resolve() if args.index else None)
         stale = check_pins(q, project, assets)
         res = {"category": q["category"], "stale": stale}
         for name in path_names:
             plan = plans.get(q["id"], {}).get(name)
             if plan is None:
                 continue
-            tokens, calls, seen, log = runner.run(plan)
+            tokens, calls, seen, log = runner.run(
+                plan, is_found=lambda s, q=q: score(q, s, prefix)[0] >= 1.0)
             found, noise = score(q, seen, prefix)
             res[name] = {"tokens": tokens, "calls": calls, "found": round(found, 3),
                          "noise": noise}

@@ -7,7 +7,7 @@ import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
-from lotsman import embed
+from lotsman import docs, embed
 from lotsman.store import Store, SymbolRow
 from lotsman.textutil import is_test_path, split_ident, tokenize
 
@@ -129,6 +129,67 @@ def _polish(hits: list[Hit], limit: int) -> list[Hit]:
         if len(result) == limit:
             break
     return result
+
+
+DOCS_LIMIT = 3
+SNIPPET_CHARS = 140
+
+
+@dataclass
+class DocHit:
+    path: str
+    line: int
+    end_line: int
+    signature: str
+    snippet: str
+    score: float
+
+
+def search_docs(store: Store, query: str, limit: int = DOCS_LIMIT,
+                root=None) -> list[DocHit]:
+    """Markdown sections matching the query (FTS5 BM25 over heading chain and
+    own text, Russian stemmed). A separate list: docs must never push code
+    hits out of `search`. With `root`, each hit gets a one-line snippet."""
+    wanted = list(dict.fromkeys(docs.terms(query)))
+    if not wanted or limit <= 0:
+        return []
+    # Russian stems also match longer forms (`релиз*` → `релизного`).
+    match = " OR ".join(
+        '"' + t.replace('"', "") + '"' + ("*" if docs.is_cyrillic(t) and len(t) >= 4 else "")
+        for t in wanted)
+    hits = []
+    for path, line, end, sig, score in store.search_docs(match, limit):
+        snippet = _snippet(root, path, line, end, set(wanted)) if root else ""
+        hits.append(DocHit(path, line, end, sig, snippet, -score))
+    return hits
+
+
+def _snippet(root, path: str, line: int, end: int, wanted: set[str]) -> str:
+    """The section line sharing most terms with the query, trimmed."""
+    try:
+        with open(f"{root}/{path}", encoding="utf-8", errors="replace") as fh:
+            text = [l for n, l in enumerate(fh, 1) if line < n <= end]
+    except OSError:
+        return ""
+    best, best_hits = "", 0
+    for raw in text:
+        line = raw.strip().lstrip("-*>|# ").strip()
+        if not line:
+            continue
+        hits = len(wanted & set(docs.terms(line)))
+        if hits > best_hits or not best:
+            best, best_hits = line, hits
+    return best if len(best) <= SNIPPET_CHARS else best[:SNIPPET_CHARS - 1] + "…"
+
+
+def render_doc_hits(hits: list[DocHit], binding: set[str]) -> list[str]:
+    lines = ["docs:"] if hits else []
+    for h in hits:
+        mark = "  [binding: read in full]" if h.path in binding else ""
+        lines.append(f"  {h.path}:{h.line}-{h.end_line}  {h.signature}{mark}")
+        if h.snippet:
+            lines.append(f"      {h.snippet}")
+    return lines
 
 
 def search(store: Store, query: str, limit: int = 10, mode: str = "auto") -> list[Hit]:

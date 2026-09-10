@@ -49,6 +49,20 @@ def _check_languages() -> Check:
     return Check("languages", status, details, data)
 
 
+def _check_docs_search() -> Check:
+    import sqlite3
+    try:
+        sqlite3.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x)")
+    except sqlite3.OperationalError:
+        return Check("docs_search", WARN,
+                     [f"SQLite {sqlite3.sqlite_version} has no FTS5 — Markdown "
+                      "sections are outlined but not searchable",
+                      "fix: use a Python build whose SQLite includes FTS5"],
+                     {"fts5": False})
+    return Check("docs_search", OK, ["FTS5 available — Markdown sections searchable"],
+                 {"fts5": True})
+
+
 def _check_embeddings() -> Check:
     if not embed.available():
         return Check("embeddings", WARN,
@@ -62,7 +76,7 @@ def _check_embeddings() -> Check:
 
 
 def _check_index(root: Path) -> Check:
-    db = root / indexer.DB_RELPATH
+    db = indexer.db_path(root)
     if not db.exists():
         return Check("index", WARN,
                      ["no index yet — any read command will build it"],
@@ -143,6 +157,7 @@ def collect_checks(root: Path) -> list[Check]:
     return [
         _check_python(),
         _check_languages(),
+        _check_docs_search(),
         _check_embeddings(),
         _check_index(root),
         _check_ignore(root),

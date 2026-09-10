@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from lotsman.store import SymbolRow
+from lotsman import docs
+from lotsman.store import Store, SymbolRow
+
+
+def outline_header(store: Store, path: str, rows: list[SymbolRow]) -> list[str]:
+    """Context lines above an outline: for a doc, whether it is binding; for
+    code, the nearest module docs (one line)."""
+    if path.endswith((".md", ".markdown")):
+        if path in store.binding_docs():
+            return ["  binding: an AGENTS.md requires reading this document in full"]
+        return []
+    line = docs.docs_for(path, store.doc_paths() - {path})
+    return [f"  {line}"] if line else []
 
 
 # Member kinds whose consecutive runs collapse into one names-only line.

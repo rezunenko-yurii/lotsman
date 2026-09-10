@@ -73,7 +73,8 @@ quality across several repo shapes.
 | Gin v1.10.0 | Go web framework | Go defs/refs, small-file framework layout, package-level APIs | implemented, quality-gated |
 | ripgrep 14.1.1 | Rust workspace/CLI | Rust traits/structs/functions, multi-crate workspace, long flag/search files | implemented, quality-gated |
 | Java service/library | Java backend | classes/interfaces, package layout, annotation-heavy code | planned |
-| C# / Unity project | C# game/tooling repo | static classes, enums, generics, attributes; serialized references that lotsman cannot see | `bench_unity.py`, quality-gated on a private corpus; public corpus still needed |
+| C# / Unity project | C# game/tooling repo | static classes, enums, generics, attributes; serialized references that lotsman cannot see | `bench_unity.py`, quality-gated on a private corpus and on Chop Chop |
+| Chop Chop (Unity Open Project #1, pinned commit) | Unity 2020.3 game, content-heavy | prefabs/scenes/ScriptableObjects using scripts, UnityEvent and animation-event method calls — the serialized side `refs` does not see yet | `bench_unity_game.py`, baseline for U1/X1 |
 
 WordPress release archives include bundled libraries and large JS/admin assets.
 The WordPress harness writes a fixture-local `.lotsmanignore` so the measured
@@ -363,6 +364,39 @@ Output size and latency on the same corpus:
 | `slice` of one method, 360-line file | 3.5k chars | 1.0k chars |
 | `refs` / `outline` wall time (process, incl. refresh) | 0.13 s | 0.13 s |
 | cold index | 2.2 s | 2.5 s |
+
+## Unity Game Corpus: Chop Chop
+
+`benchmarks/bench_unity_game.py` fetches Unity Open Project #1 "Chop Chop"
+(Apache-2.0) at commit `608eac98df29` — text files only (sparse checkout,
+blob filter: 337 MB, ~20 s, instead of ~2 GB with textures, audio and
+models; `--project PATH` reuses a checkout). It builds truth from the assets:
+`.cs.meta` GUIDs → scripts; `m_Script` GUIDs in prefabs, scenes and
+ScriptableObject assets → which assets use a script; UnityEvent persistent
+calls (`m_MethodName` + `m_TargetAssemblyTypeName`) and animation events
+(`functionName` in `.anim` and model `.meta` import settings) → methods
+called from data. Spot-checked against grep (CameraManager: 17 asset users
+both ways; 39 distinct UnityEvent method names, 24 animation-event names).
+
+Run 2026-09-10 (lotsman 1.7 branch, before U1): 314 C# files, 1,240 asset
+files (656 `.asset`, 483 `.prefab`, 50 `.unity`, 22 `.anim`, …).
+
+| Serialized reference | Truth | Shown by `refs` |
+|---|---:|---:|
+| scripts used by assets (`m_Script`) | 218 | 0 |
+| script → asset links | 764 | 0 |
+| methods called by UnityEvents | 41 | 0 |
+| methods called by animation events | 24 | 0 |
+
+107 scripts used by assets have no code use `refs` can find outside their
+own file (TimeElapsedConditionSO in 19 assets, CameraManager in 17) — an
+"unused" check from code alone would flag them (the X1 trap). 19 of the 41
+UnityEvent calls carry no `m_TargetAssemblyTypeName` (owner only through the
+target object's `m_Script`).
+
+Code side on the same corpus (`bench_unity.py --root …/Assets`): refs recall
+class 99.8%, method 98.5%, property 92.0%, enum/interface/struct/static
+class 100%, precision ≥ 99%; gates pass. Cold index 0.4 s.
 
 ## Early Recommendations
 

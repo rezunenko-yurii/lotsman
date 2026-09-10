@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Public Unity game benchmark.** `benchmarks/bench_unity_game.py` fetches
+  Chop Chop (Unity Open Project #1, Apache-2.0, pinned commit; text files
+  only) and measures how much of what the assets reference — scripts used by
+  prefabs/scenes/ScriptableObjects, methods called by UnityEvents and
+  animation events — `refs` shows. Today: 0 of 764 script → asset links,
+  0 of 41 UnityEvent methods, 0 of 24 animation-event methods; the baseline
+  for asset references. C# refs recall on it: classes 99.8%, methods 98.5%.
 - **Caller check after a signature edit (C#, in `impact`).** The index keeps
   each method's parameter shape (required, optional, `params`, extension
   `this`) and remembers the shape it saw before an edit (24 h; reverting the

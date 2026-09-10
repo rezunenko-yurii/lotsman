@@ -5,8 +5,8 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10 (later session): A1, P1, U0 and V1 done and committed too;
-**next: G1 → U1, then X1–X5**. B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-10 (later session): A1, P1, U0, V1 and G1 done and committed
+too; **next: U1, then X1–X5** (public corpus: Chop Chop, see G1). B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -510,6 +510,26 @@ Pick a content-heavy public Unity project (prefabs, scenes, UnityEvents,
 ScriptableObjects; permissive license), pin a tag, clone read-only into a temp
 dir inside the benchmark like the other harnesses. Candidates to evaluate:
 Unity "Boss Room", "Chop Chop" (Open Projects). Needed for U1 and X1.
+
+Status: **done** (2026-09-10). Chop Chop, `UnityTechnologies/open-project-1`
+@ `608eac98df29` (main, final, 2022-06-26), Apache-2.0, Unity 2020.3.
+Boss Room rejected: Unity Companion License and its `.unity`/`.asset` files
+are LFS pointers (would need LFS downloads). `benchmarks/bench_unity_game.py`:
+sparse, blob-filtered fetch of text files (337 MB, ~20 s; user approved the
+download), truth from `.meta` GUIDs, `m_Script`, UnityEvent persistent calls
+and animation events (`.anim` + model `.meta`). Kept checkout for U1/X1:
+`<scratchpad>/g1/chopchop/repo/UOP1_Project` (re-fetch with `--keep` if the
+scratchpad is gone; run with `--project` to skip the fetch).
+
+Measured (U1/X1 baseline, details in BENCHMARKS.md): 218 scripts used by
+assets, 764 script → asset links, 41 UnityEvent-called and 24
+animation-event methods — `refs` shows 0 of each. 107 asset-used scripts
+have no code use `refs` finds (X1 trap). 19/41 UnityEvent calls have no
+`m_TargetAssemblyTypeName` (resolve the owner via the target's `m_Script`
+in U1). C# refs on this corpus: class 99.8%, method 98.5%, property 92%.
+Next: U1 — its done criterion ("≥ 10 samples match a manual check") can
+use this truth directly; target: script → asset links and data-called
+methods shown, with `file:line`.
 
 ## Order
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +61,13 @@ CREATE TABLE IF NOT EXISTS directives (
     end_line INTEGER NOT NULL,
     cond TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sig_changes (
+    path TEXT NOT NULL,
+    name TEXT NOT NULL,
+    old TEXT NOT NULL,
+    at REAL NOT NULL,
+    PRIMARY KEY (path, name)
+);
 CREATE INDEX IF NOT EXISTS idx_directives_file ON directives(file_id);
 CREATE INDEX IF NOT EXISTS idx_bases_base ON bases(base_name);
 CREATE INDEX IF NOT EXISTS idx_bases_type ON bases(type_name);
@@ -87,6 +95,9 @@ NON_CODE_LANGS = ("markdown", "json", "asmdef")
 # SQL filter on the `symbols s` alias: symbols that rank, embed and code-search.
 RANKED_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in UNRANKED_KINDS)
 
+# How long a pre-edit method signature is remembered for `impact`'s caller
+# check: one working session; afterwards the edit is done.
+SIG_CHANGE_TTL = 24 * 3600
 MAX_LINES_PER_ROW = 64  # enough for any per-file listing; bounds DB growth
 
 
@@ -145,6 +156,9 @@ class Store:
             self.conn.commit()
         # Rows written before this column existed get '' — the INDEX_VERSION
         # bump that came with it reindexes them on the next run.
+        if "arity" not in cols:
+            self.conn.execute("ALTER TABLE symbols ADD COLUMN arity TEXT")
+            self.conn.commit()
         cols = {row[1] for row in self.conn.execute("PRAGMA table_info(idents)")}
         if "lines" not in cols:
             self.conn.execute(
@@ -181,6 +195,7 @@ class Store:
         self.conn.execute("DELETE FROM bases")
         self.conn.execute("DELETE FROM assemblies")
         self.conn.execute("DELETE FROM directives")
+        self.conn.execute("DELETE FROM sig_changes")
         if self.has_fts:
             self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
@@ -230,11 +245,13 @@ class Store:
                     bases: list[tuple[str, str, int]] | None = None,
                     assembly: tuple[str, str, str] | None = None,
                     directives: list | None = None,
+                    arities: dict[tuple[str, int], str] | None = None,
                     ) -> None:
         """Replace a file's index data atomically (caller batches in a transaction).
         doc_text: (section name, line) -> (heading terms, body terms);
         assembly: (kind, name, JSON data) of a Unity `.asmdef`/`.asmref`;
-        directives: C# `#if` branches and `#define`s (csdefines.Directive)."""
+        directives: C# `#if` branches and `#define`s (csdefines.Directive);
+        arities: (name, line) -> encoded parameter shape (callcheck.Arity)."""
         cur = self.conn.execute("SELECT id FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
         if row:
@@ -253,10 +270,11 @@ class Store:
                 "INSERT INTO files(path, sha, mtime, size, lang) VALUES(?,?,?,?,?)",
                 (path, sha, mtime, size, lang))
             file_id = cur.lastrowid
+        arities = arities or {}
         self.conn.executemany(
-            "INSERT INTO symbols(file_id, name, kind, line, end_line, signature) "
-            "VALUES(?,?,?,?,?,?)",
-            [(file_id, n, k, l, e, sig) for n, k, l, e, sig in symbols])
+            "INSERT INTO symbols(file_id, name, kind, line, end_line, signature, arity) "
+            "VALUES(?,?,?,?,?,?,?)",
+            [(file_id, n, k, l, e, sig, arities.get((n, l))) for n, k, l, e, sig in symbols])
         ident_lines = ident_lines or {}
         self.conn.executemany(
             "INSERT INTO idents(file_id, name, count, lines) VALUES(?,?,?,?)",
@@ -297,6 +315,7 @@ class Store:
             f"SELECT id FROM files WHERE path IN ({ph})", paths)] if paths else []
         self._delete_doc_text(ids)
         self.conn.executemany("DELETE FROM files WHERE path = ?", [(p,) for p in paths])
+        self.conn.executemany("DELETE FROM sig_changes WHERE path = ?", [(p,) for p in paths])
 
     def commit(self) -> None:
         self.conn.commit()
@@ -428,6 +447,43 @@ class Store:
         return [Directive(*row) for row in self.conn.execute(
             "SELECT d.kind, d.line, d.end_line, d.cond FROM directives d "
             "JOIN files f ON f.id = d.file_id WHERE f.path = ? ORDER BY d.line", (path,))]
+
+    def method_arities(self, path: str) -> list[tuple[str, int, str | None, str]]:
+        """(name, line, encoded arity, signature) of one file's methods."""
+        return self.conn.execute(
+            "SELECT s.name, s.line, s.arity, s.signature FROM symbols s "
+            "JOIN files f ON f.id = s.file_id WHERE f.path = ? AND s.kind = 'method' "
+            "ORDER BY s.line", (path,)).fetchall()
+
+    def arity_at(self, path: str, line: int) -> str | None:
+        row = self.conn.execute(
+            "SELECT s.arity FROM symbols s JOIN files f ON f.id = s.file_id "
+            "WHERE f.path = ? AND s.line = ? AND s.arity IS NOT NULL", (path, line)).fetchone()
+        return row[0] if row else None
+
+    def note_sig_change(self, path: str, name: str, old: list[str], new: list[str],
+                        at: float) -> None:
+        """Remember a method's parameter shapes before an edit. The first
+        seen version stays the baseline across later edits; returning to it
+        forgets the change. A baseline older than SIG_CHANGE_TTL no longer
+        counts: the edit it tracked is done."""
+        self.conn.execute("DELETE FROM sig_changes WHERE path=? AND name=? AND at < ?",
+                          (path, name, at - SIG_CHANGE_TTL))
+        row = self.conn.execute("SELECT old FROM sig_changes WHERE path=? AND name=?",
+                                (path, name)).fetchone()
+        base = json.loads(row[0]) if row else old
+        if sorted(base) == sorted(new):
+            self.conn.execute("DELETE FROM sig_changes WHERE path=? AND name=?", (path, name))
+        elif not row:
+            self.conn.execute("INSERT INTO sig_changes(path, name, old, at) VALUES(?,?,?,?)",
+                              (path, name, json.dumps(sorted(old)), at))
+
+    def sig_changes(self, path: str, now: float | None = None) -> list[tuple[str, str]]:
+        """(method name, old shapes JSON) remembered for a file within
+        SIG_CHANGE_TTL."""
+        since = (time.time() if now is None else now) - SIG_CHANGE_TTL
+        return self.conn.execute("SELECT name, old FROM sig_changes WHERE path=? AND at >= ? "
+                                 "ORDER BY name", (path, since)).fetchall()
 
     def has_file(self, path: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None

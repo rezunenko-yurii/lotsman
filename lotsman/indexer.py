@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import csdefines, docs, extract, jsonrefs, scanner, unity, wiring
+from lotsman import callcheck, csdefines, docs, extract, jsonrefs, scanner, unity, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -19,7 +19,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "9"
+INDEX_VERSION = "10"
 
 
 @dataclass
@@ -56,6 +56,36 @@ def _binding_docs(root: Path, store: Store) -> set[str]:
                 continue
             found |= docs.binding_docs(path, text, known)
     return found
+
+
+def _arities(data: bytes, symbols) -> dict[tuple[str, int], str]:
+    """C# method parameter shapes, for the caller check after an edit."""
+    methods = [s for s in symbols if s.kind == "method"]
+    if not methods:
+        return {}
+    text = data.decode("utf-8-sig", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    lines = callcheck.clean_lines(text)
+    out = {}
+    for s in methods:
+        a = callcheck.arity(lines, s.line, s.name, cleaned=True)
+        if a is not None:
+            out[(s.name, s.line)] = a.encode()
+    return out
+
+
+def _note_sig_changes(store: Store, path: str, arities: dict[tuple[str, int], str]) -> None:
+    """Compare a file's method shapes in the index (before this edit) with
+    the new ones; overloads compare as a set per name."""
+    old: dict[str, list[str]] = {}
+    for name, _, arity, _ in store.method_arities(path):
+        if arity:
+            old.setdefault(name, []).append(arity)
+    new: dict[str, list[str]] = {}
+    for (name, _), arity in arities.items():
+        new.setdefault(name, []).append(arity)
+    now = time.time()
+    for name in old.keys() & new.keys():
+        store.note_sig_change(path, name, old[name], new[name], now)
 
 
 def db_path(root: Path) -> Path:
@@ -132,6 +162,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         bases: list = []
         assembly = None
         directives = None
+        arities = None
         try:
             if rec.lang == unity.ASMDEF_LANG:
                 # Assembly definitions: facts for `unity`/outline, no symbols.
@@ -170,6 +201,9 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
                 idents, lines, bases = extract.extract_refs_full(rec.lang, data)
                 if rec.lang == "csharp":
                     directives = csdefines.scan(data)
+                    arities = _arities(data, symbols)
+                    if prev is not None:
+                        _note_sig_changes(store, rec.path, arities)
                 wired, wired_lines = wiring.apply_with_lines(patterns, data)
                 idents.update(wired)
                 for name, extra in wired_lines.items():
@@ -180,7 +214,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines, doc_text, bases, assembly, directives)
+            idents, lines, doc_text, bases, assembly, directives, arities)
         if prev is None:
             result.added += 1
         else:

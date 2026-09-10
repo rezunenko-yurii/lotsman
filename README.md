@@ -529,7 +529,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked |
 | `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it, build targets and `#if` verdicts per target; with USES, whether TARGET's code can see it |
 | `lotsman unity errors [--log PATH]` | Unity: errors of the last compilation in the Editor log, deduped, with a staleness flag when sources changed after the log |
-| `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
+| `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates; C#: methods whose parameter count changed since the last index get their call sites checked (`breaks` / `maybe` with `file:line`) |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |
 | `lotsman stats` | show index statistics |
@@ -549,6 +549,11 @@ Freshness:
 - C#: camelCase identifiers (locals, private fields, lowercase properties)
   are not counted as bare references. Owner-type checks in `map` and
   `impact` (a member counts where its type is named) are C#-only so far.
+- C#: the caller check in `impact` counts arguments by text against the
+  signature the index saw before the edit (remembered for 24 h). It skips
+  calls whose receiver is declared as another type, but cannot resolve
+  `var`/DI receivers or named arguments; calls through a base type are
+  checked against the changed override.
 - PHP references are lexical today.
 - Reflection, DI, generated code and serialized scene references can be missed;
   add `.lotsman/wiring.json` patterns when the repo encodes important edges in

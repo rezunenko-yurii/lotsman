@@ -265,7 +265,7 @@ def cmd_impact(args) -> int:
     else:
         changed, method = impact.detect_changed(root, store, args.since)
     out = impact.generate_impact(store, changed, budget=args.budget,
-                                 tests_only=args.tests)
+                                 tests_only=args.tests, root=root)
     store.close()
     print(out, end="")
     print(f"[lotsman] impact via {method}", file=sys.stderr)

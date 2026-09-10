@@ -78,9 +78,11 @@ def detect_changed(root: Path, store: Store,
 
 def generate_impact(store: Store, changed: list[str],
                     budget: int = DEFAULT_BUDGET,
-                    tests_only: bool = False) -> str:
+                    tests_only: bool = False, root: Path | None = None) -> str:
     """Changed files with their most-used symbols, then dependent files ranked
-    by how much they use names defined in the changed set."""
+    by how much they use names defined in the changed set. With `root`, C#
+    methods whose parameter count changed get their call sites checked
+    first (callcheck) — that section is never cut by the budget."""
     changed_set = set(changed)
     if not changed_set:
         return "(no changed files detected)"
@@ -138,6 +140,8 @@ def generate_impact(store: Store, changed: list[str],
 
     # The disclaimer travels with the output, not just the docs: agents read
     # command output, not READMEs.
+    from lotsman import callcheck
+    sig_lines = callcheck.render_signature_changes(store, root, changed) if root else []
     lines: list[str] = [
         "note: heuristic, name-based matching (no type resolution) — may miss "
         "reflection/DI/codegen and type-resolved usages",
@@ -177,9 +181,11 @@ def generate_impact(store: Store, changed: list[str],
                      "same-named API, or reached via var/DI/inheritance):")
         lines += _dependent_lines(weak_dependents)
 
-    # Budget cap: cut whole lines from the tail.
-    out: list[str] = []
-    used_tokens = 0
+    # Budget cap: cut whole lines from the tail; the signature check comes
+    # first and is not cut (it is what breaks the build).
+    out: list[str] = [lines[0], *sig_lines, *([""] if sig_lines else [])]
+    lines = lines[1:]
+    used_tokens = estimate_tokens("\n".join(out))
     for line in lines:
         cost = estimate_tokens(line + "\n")
         if used_tokens + cost > budget:

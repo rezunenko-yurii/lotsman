@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Caller check after a signature edit (C#, in `impact`).** The index keeps
+  each method's parameter shape (required, optional, `params`, extension
+  `this`) and remembers the shape it saw before an edit (24 h; reverting the
+  edit forgets it). `impact` then counts the arguments at every call site
+  `change` would list and puts a "Signature changes" section first, never cut
+  by the budget: `breaks` — no overload takes that count — and `maybe` —
+  compiles only through optional/`params` parameters — with `file:line`;
+  unparsed calls are `unclear`, not fine. Same-name calls of other types are
+  skipped and counted (receiver declared as another type, a static call on
+  another type, a bare call inside a type with its own method, or an argument
+  count the old version never took). On a copy of a Unity project a seeded
+  `AddSink(sink)` → `AddSink(sink, priority)` lists all 5 real callers
+  (4 files) and none of the same-name `PurchasingFeedbackPresenter.AddSink`
+  calls; before, the 4 files sat among 208 impacted ones, `AddSink` named in
+  2, no lines, nothing saying the build breaks. +6% cold index time. Index
+  format 10.
 - **`lotsman unity errors` — compile errors from the Editor log.** Reads the
   last compilation only (earlier errors may be fixed), dedupes repeats,
   counts warnings apart, lists `file:line:col CODE message` relative to the

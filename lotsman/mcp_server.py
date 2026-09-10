@@ -242,7 +242,7 @@ class McpServer:
         budget = int(args.get("budget") or impact.DEFAULT_BUDGET)
         tests = bool(args.get("tests"))
         return (impact.generate_impact(self.store, changed, budget=budget,
-                                       tests_only=tests)
+                                       tests_only=tests, root=self.root)
                 + f"\n(change detection: {method})")
 
     def _tool_change(self, args: dict) -> str:

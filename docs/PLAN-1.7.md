@@ -5,8 +5,8 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10 (later session): A1, P1 and U0 done and committed too;
-**next: V1, then G1 → U1, X1–X5**. B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-10 (later session): A1, P1, U0 and V1 done and committed too;
+**next: G1 → U1, then X1–X5**. B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -447,6 +447,43 @@ still pass the old count (`file:line`). Name-based; optional/`params`
 arguments reported as "maybe".
 - Done when: synthetic tests for add/remove/optional/params; on SDK-Kitchen a
   seeded change is caught.
+
+Status: **done** (2026-09-10). `lotsman/callcheck.py`; `symbols.arity` +
+`sig_changes` table, index format 10. The baseline is the shape the index
+held before the refresh that saw the edit; it stays across later edits,
+reverting forgets it, it expires after 24 h (`SIG_CHANGE_TTL`). `impact`
+puts "Signature changes" right after the note line, outside the budget cut.
+Same-name calls of other types are skipped (and counted): receiver declared
+with a type outside the owner's family (fields, locals, parameters,
+properties, `var x = new T(`), static call on another indexed type, bare
+call inside a type with its own same-name method, or a count the old shapes
+never took. Extension methods: `Ext.M(x)` / bare call inside `Ext` pass
+`this`, `x.M()` does not.
+
+Measured (a copy of SDK-Kitchen `Assets` in the scratchpad, never the live
+project; B0 has no V1 question — the harness cannot seed edits):
+- Seeded `ExLog.AddSink(ILogSink)` → `(ILogSink, int priority)`: before,
+  `impact` (6,157 chars) listed the 4 caller files among 208, `AddSink`
+  named in 2, no lines, no break signal. After: **5/5 real calls (grep) in
+  4 files as `breaks` with lines, 0 false**; the 7 same-name
+  `PurchasingFeedbackPresenter.AddSink` calls skipped (an earlier cut
+  without receiver types reported 2 of them).
+- Seeded `InjectFields(this NodeBehaviour)` + `bool strict = false`:
+  **15/15 calls as `maybe`** (13 `x.InjectFields()`, 2 static
+  `Injector.InjectFields(b)`).
+- Precision on compiling code (150 sampled files, every method given +1
+  required parameter, 3,332 call sites): 1,950 flagged, 1,238 skipped as
+  another type's; a manual check of 20 random flagged calls: 17 real
+  callers (3 of them through a base/interface receiver; `var`/DI receivers
+  stay unresolved), ~12/20 before receiver types. Object members
+  (`ToString`…) among flagged: 72 → 9.
+- Cost: cold index 3.48 → 3.75 s (+6%; a per-name regex first cost +26%,
+  replaced by `str.find`, and each file is cleaned once); `impact` 0.20 s
+  with or without seeded changes. Shapes for 10,060 of 12,053 C# "method"
+  rows — the rest are properties; 1 real method (a long `extern`) missed.
+- Found on the way: stripping strings before comments let a `"` inside a
+  block comment open a fake string (SimpleJSON.cs header) — one-pass
+  tokenizer now.
 
 ### Tier 3 — cost and convenience
 

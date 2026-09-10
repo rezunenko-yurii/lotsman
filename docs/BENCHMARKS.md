@@ -413,13 +413,37 @@ package types and GameObjects, which `refs` does not list.
 | UnityEvent calls without a target | 2 | 2 | `unity missing` |
 
 Script links lotsman lists that the truth lacks: 0. All 107 X1-trap scripts
-now show their asset users in `refs`. Gates: script links ≥ 95%, project
+now show their asset users in `refs`. UnityEvent calls set by prefab-instance
+overrides (added with X1): 12 methods, `refs` shows 11 — the 12th names
+`UIPopupButtonSetter`, a type no longer in the project. Gates: script links ≥ 95%, project
 UnityEvent calls ≥ 90%. Manual check (the U1 done criterion): 10 random
 scripts — asset users identical to grep of their `m_Script` GUID; 10 random
 UnityEvent/animation-event sites — each `file:line` is the `m_MethodName` /
 `functionName` line, 3 owners traced by hand. Cost: cold index 0.4 → 2.6 s
 (1,240 assets, 332 MB of YAML; the private Unity project +3%, 3.96 → 4.09 s);
 `refs` 0.12–0.18 s; `unity missing` 0.15 s.
+
+## Unused Candidates (X1)
+
+`lotsman unused` against "no code identifier outside its own body" (what
+`refs` alone gives), 2026-09-11. False positives = candidates something does
+use or run, judged by hand with grep over the whole project (code with
+comments marked, assets, JSON, docs) and script GUIDs.
+
+| Corpus | Baseline | `unused` | Sampled | Used after all (before the fix it prompted) |
+|---|---:|---:|---|---|
+| Chop Chop | 391 | 108 | 20 baseline; all 116 of the first run | baseline 14/20; `unused` 6/116 (`_underscore` properties) → 0 |
+| Private Unity project | 2,969 | 160 | 20 baseline; 5 × 30 fresh random | baseline ≥ 17/20; `unused` 6, 3, 1, 3, 1 of 30 |
+
+What the samples found and the rule each became: Json.NET `ShouldSerializeX`,
+`IsExternalInit`, `TypeCache.GetTypesDerivedFrom<T>()` modules, NUnit
+`[TestCase]` spanning lines or holding `[0]` in a string, a type looked up by
+a tail of its name, a class needed for its nested type, `-executeMethod`
+entry points, an Android build callback. `bench_unity_game.py` gates that
+`unused` lists nothing the assets use (0 of 108). The rest are dead code
+(commented-out callers, lost `[MenuItem]`s, never-thrown exceptions) or
+public API nothing here calls (DOTween modules; SDK components for games).
+Time: 0.2 s and 0.8 s.
 
 ## Early Recommendations
 

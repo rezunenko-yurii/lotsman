@@ -16,7 +16,9 @@ Assets reference code in four ways, all in text-mode YAML:
 
 Prefab instances and variants name their source prefab by GUID
 (`m_SourcePrefab`), which lets a script's users be followed through nested
-prefabs into scenes. Binary assets and `stripped` documents are skipped.
+prefabs into scenes; a UnityEvent call set on an instance is an override
+(`propertyPath: ….m_MethodName`, `value: M`). Binary assets are skipped;
+`stripped` documents count as script uses without fields.
 """
 
 from __future__ import annotations
@@ -51,6 +53,13 @@ _CALL_RE = re.compile(
     rb"- m_Target: \{fileID: (-?\d+)(?:, guid: ([0-9a-f]{32}))?[^}\n]*\}\s*\n"
     rb"(?:[ \t]*m_TargetAssemblyTypeName:[ \t]*([^\n]*)\n)?"
     rb"[ \t]*m_MethodName:[ \t]*(\w*)")
+# A prefab instance's override of one persistent-call property.
+_OVERRIDE_CALL_RE = re.compile(
+    rb"- target: \{fileID: (-?\d+), guid: ([0-9a-f]{32})[^}]*\}[ \t]*\n"  # may wrap
+    rb"[ \t]*propertyPath: ([\w.\[\]]*?m_PersistentCalls\.m_Calls\.Array\.data\[\d+\])"
+    rb"\.(m_MethodName|m_TargetAssemblyTypeName|m_Target)[ \t]*\n"
+    rb"[ \t]*value:[ \t]*([^\n]*)\n"
+    rb"[ \t]*objectReference: \{fileID: (-?\d+)(?:, guid: ([0-9a-f]{32}))?")
 _ANIM_EVENT_RE = re.compile(rb"functionName: (\w+)")
 _SOURCE_PREFAB_RE = re.compile(
     rb"m_(?:SourcePrefab|ParentPrefab): \{fileID: -?\d+, guid: ([0-9a-f]{32})")
@@ -123,7 +132,8 @@ def parse_asset(data: bytes) -> list[AssetRef]:
             slot[1] += 1
 
     local_script: dict[bytes, str] = {}   # document fileID -> script GUID
-    pending_calls: list[tuple[bytes, bytes | None, str, str, int]] = []
+    # (target fileID or None when unknown, target GUID, type name, method, line)
+    pending_calls: list[tuple[bytes | None, bytes | None, str, str, int]] = []
     line = 1
     prev = 0
     for i, (start, cls, fid, stripped) in enumerate(docs):
@@ -162,12 +172,16 @@ def parse_asset(data: bytes) -> list[AssetRef]:
             pm = _SOURCE_PREFAB_RE.search(doc)
             if pm:
                 add(PREFAB, pm.group(1).decode(), "", line + doc.count(b"\n", 0, pm.start()))
+            if b"m_PersistentCalls" in doc:
+                pending_calls += _override_calls(doc, line)
     for target, target_guid, type_name, method, ln in pending_calls:
         # The target component's script first: the serialized type name goes
         # stale when the class is renamed (the GUID link does not).
         short = type_name.replace("+", ".").rsplit(".", 1)[-1] if type_name else ""
         if target_guid:
             owner = "A:" + target_guid.decode()
+        elif target is None:
+            owner = "T:" + short if short else ""
         elif target == b"0":
             owner = "X:" + short  # the target object is gone: the call does nothing
         elif target in local_script:
@@ -178,6 +192,32 @@ def parse_asset(data: bytes) -> list[AssetRef]:
             owner = ""  # a GameObject target: any of its components
         add(CALL, _method_key(method), owner, ln)
     return [AssetRef(k, key, owner, ln, n) for (k, key, owner), (ln, n) in found.items()]
+
+
+def _override_calls(doc: bytes, line: int
+                    ) -> list[tuple[bytes | None, bytes | None, str, str, int]]:
+    """Persistent calls a prefab instance sets through overrides, one per
+    (modified component, event slot). An overridden target of fileID 0 may
+    only mean "not overridden here", so it stays unknown (never "gone")."""
+    slots: dict[tuple[bytes, bytes, bytes], dict] = {}
+    for m in _OVERRIDE_CALL_RE.finditer(doc):
+        slot = slots.setdefault((m.group(1), m.group(2), m.group(3)), {})
+        prop, value = m.group(4), m.group(5).strip()
+        if prop == b"m_MethodName":
+            slot["method"] = (value, line + doc.count(b"\n", 0, m.start(5)))
+        elif prop == b"m_TargetAssemblyTypeName":
+            slot["type"] = value
+        elif m.group(6) != b"0":
+            slot["target"] = (m.group(6), m.group(7))
+    out = []
+    for slot in slots.values():
+        method, ln = slot.get("method", (b"", 0))
+        if not re.fullmatch(rb"\w+", method):
+            continue
+        target, target_guid = slot.get("target", (None, None))
+        type_name = slot.get("type", b"").decode().split(",")[0].strip()
+        out.append((target, target_guid, type_name, method.decode(), ln))
+    return out
 
 
 def parse_model_meta(data: bytes) -> list[AssetRef]:

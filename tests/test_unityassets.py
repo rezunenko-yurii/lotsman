@@ -154,6 +154,33 @@ class ParseTests(unittest.TestCase):
         self.assertIn(("call", "Toggle", "X:"), rows)                # no target object
         self.assertIn(("call", "Raise", "A:" + G_CHANNEL), rows)
 
+    def test_prefab_instance_overrides(self):
+        # A call set on a prefab instance is an override (one per instance
+        # and event slot); its `target` line wraps.
+        slot = "m_OnClick.m_PersistentCalls.m_Calls.Array.data[0]"
+        mod = ("    - target: {{fileID: 7745, guid: {g},\n        type: 3}}\n"
+               "      propertyPath: {slot}.{prop}\n      value: {value}\n"
+               "      objectReference: {{fileID: {ref}}}\n")
+
+        def instance(fid: str, *mods: tuple[str, str, str]) -> str:
+            return (f"--- !u!1001 &{fid}\nPrefabInstance:\n  m_Modification:\n"
+                    "    m_Modifications:\n"
+                    + "".join(mod.format(g=G_DOOR_PREFAB, slot=slot, prop=p, value=v, ref=r)
+                              for p, v, r in mods)
+                    + f"  m_SourcePrefab: {{fileID: 100100000, guid: {G_DOOR_PREFAB}, type: 3}}\n")
+        text = HEADER + instance(
+            "10", ("m_TargetAssemblyTypeName", "Door, Assembly-CSharp", "0"),
+            ("m_MethodName", "Open", "0")) + instance(
+            "20", ("m_Target", "", "30"), ("m_MethodName", "set_IsOpen", "0")) + instance(
+            "40", ("m_Target", "", "0"), ("m_MethodName", "Slam", "0")) + (
+            f"--- !u!114 &30 stripped\nMonoBehaviour:\n"
+            f"  m_Script: {{fileID: 11500000, guid: {G_SWITCH}, type: 3}}\n")
+        rows = self.rows(text)
+        self.assertEqual(rows[("call", "Open", "T:Door")][0], 15)    # the value line
+        self.assertIn(("call", "IsOpen", "S:" + G_SWITCH), rows)     # local target
+        # A null target in an override may just mean "not overridden": unknown.
+        self.assertIn(("call", "Slam", ""), rows)
+
     def test_clip_meta_binary_and_langs(self):
         self.assertIn(("anim", "PlaySound", ""), self.rows(CLIP))
         meta = b"ModelImporter:\n  clipAnimations:\n  - events:\n    - functionName: Step\n"

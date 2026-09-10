@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lotsman import indexer, refsview, unityassets  # noqa: E402
+from lotsman import indexer, refsview, unityassets, unused  # noqa: E402
 from lotsman.store import TYPE_KINDS, Store  # noqa: E402
 
 CORPUS_REPO = "https://github.com/UnityTechnologies/open-project-1.git"
@@ -57,6 +57,10 @@ SCRIPT_RE = re.compile(r"m_Script: \{fileID: 11500000, guid: ([0-9a-f]{32})")
 TARGET_TYPE_RE = re.compile(r"m_TargetAssemblyTypeName: ([\w.+`]+)")
 METHOD_RE = re.compile(r"m_MethodName: (\w+)")
 ANIM_EVENT_RE = re.compile(r"functionName: (\w+)")
+# A UnityEvent call set by a prefab-instance override.
+OVERRIDE_CALL_RE = re.compile(
+    r"propertyPath: \S*m_PersistentCalls\.m_Calls\.Array\.data\[\d+\]\.m_MethodName\s*\n"
+    r"\s*value: (\w+)")
 
 GATES = {"min_scripts": 250, "min_asset_files": 1000, "min_script_users": 150,
          "min_data_methods": 20}
@@ -99,6 +103,7 @@ def build_truth(project: Path) -> dict:
         "project": defaultdict(set), "stale": defaultdict(set), "no_target": defaultdict(set),
         "engine": defaultdict(set), "unresolved": defaultdict(set)}
     anim_calls: dict[str, set[str]] = defaultdict(set)
+    override_calls: dict[str, set[str]] = defaultdict(set)   # method -> files
     asset_files = 0
     by_ext = Counter()
     declared: dict[str, bool] = {}
@@ -144,10 +149,15 @@ def build_truth(project: Path) -> dict:
                 else:
                     kind = "project" if is_declared(method) else "stale"
                 calls[kind][(owner, method)].add(rel)
+            for method in OVERRIDE_CALL_RE.findall(text):
+                method = method[4:] if method.startswith(("set_", "get_")) else method
+                if is_declared(method):
+                    override_calls[method].add(rel)
         for fn in set(ANIM_EVENT_RE.findall(text)):
             anim_calls[fn].add(rel)
     return {"scripts": scripts, "users": users, "calls": calls,
-            "anim_calls": anim_calls, "asset_files": asset_files, "by_ext": by_ext}
+            "anim_calls": anim_calls, "override_calls": override_calls,
+            "asset_files": asset_files, "by_ext": by_ext}
 
 
 def evaluate(project: Path, store: Store, truth: dict) -> dict:
@@ -181,6 +191,19 @@ def evaluate(project: Path, store: Store, truth: dict) -> dict:
     anim_hit = sum(bool(f & {x.path for x in (uses(fn).anims if uses(fn) else [])})
                    for fn, f in truth["anim_calls"].items() if store.symbols_named(fn))
     anim_defined = sum(1 for fn in truth["anim_calls"] if store.symbols_named(fn))
+    ov_hit = sum(bool(f & {x.path for x in (uses(m).calls if uses(m) else [])})
+                 for m, f in truth["override_calls"].items())
+    # X1: `unused` must not list what the assets use.
+    rep = unused.collect_unused(store, project / "Assets")
+    used_scripts = {Path(s).stem for s in users}
+    used_methods = ({m for (_, m) in calls["project"]} | {m for (_, m) in calls["stale"]}
+                    | set(truth["override_calls"]) | set(truth["anim_calls"]))
+    unused_but_data = [c.row.name for c in rep.candidates
+                       if c.row.name in (used_scripts if c.row.kind in TYPE_KINDS
+                                         else used_methods)]
+    trap_listed = sum(1 for c in rep.candidates
+                      if c.row.kind in TYPE_KINDS and c.row.name in
+                      {Path(s).stem for s, _ in code_unused_but_used})
     missing = unityassets.render_missing(store, project / "Assets")
     stale_hit = sum(any(f"{f}:" in line and line.endswith(f".{m}")
                         for f in files for line in missing.splitlines())
@@ -198,6 +221,10 @@ def evaluate(project: Path, store: Store, truth: dict) -> dict:
             "unresolved_calls": len(calls["unresolved"]),
             "anim_methods": anim_defined, "anim_methods_shown": anim_hit,
             "anim_orphans": len(truth["anim_calls"]) - anim_defined,
+            "override_calls": len(truth["override_calls"]), "override_calls_shown": ov_hit,
+            "unused_candidates": len(rep.candidates),
+            "unused_types": sum(1 for c in rep.candidates if c.row.kind in TYPE_KINDS),
+            "unused_but_data": unused_but_data, "unused_trap_listed": trap_listed,
             "code_unused_but_used": code_unused_but_used, "x1_now_visible": x1_now_visible}
 
 
@@ -246,6 +273,8 @@ def main() -> int:
              "refs"),
             ("UnityEvent calls to project methods", ev["project_calls"],
              ev["project_calls_shown"], "refs"),
+            ("UnityEvent calls set by prefab overrides", ev["override_calls"],
+             ev["override_calls_shown"], "refs"),
             ("animation-event methods (defined)", ev["anim_methods"],
              ev["anim_methods_shown"], "refs"),
             ("stale UnityEvent calls (method gone)", ev["stale_calls"],
@@ -262,11 +291,15 @@ def main() -> int:
               f"(listed by `unity missing` as unresolved scripts): {ev['unresolved_calls']}; "
               f"animation events naming no project "
               f"method: {ev['anim_orphans']})")
-        unused = ev["code_unused_but_used"]
-        print(f"\nX1 trap: {len(unused)} scripts used by assets for which `refs` finds no "
+        trap = ev["code_unused_but_used"]
+        print(f"\nX1 trap: {len(trap)} scripts used by assets for which `refs` finds no "
               f"code use outside their own file; `refs` lists asset users for "
               f"{ev['x1_now_visible']} of them, e.g. "
-              + ", ".join(f"{Path(s).stem} ({n})" for s, n in sorted(unused, key=lambda x: -x[1])[:5]))
+              + ", ".join(f"{Path(s).stem} ({n})" for s, n in sorted(trap, key=lambda x: -x[1])[:5]))
+        print(f"\nX1 `unused`: {ev['unused_candidates']} candidates "
+              f"({ev['unused_types']} types); used by assets yet listed: "
+              f"{len(ev['unused_but_data'])} {ev['unused_but_data'][:5]}; X1-trap scripts "
+              f"listed: {ev['unused_trap_listed']} of {len(trap)}")
         gates = [
             ("scripts", len(truth["scripts"]) >= GATES["min_scripts"]),
             ("asset files", truth["asset_files"] >= GATES["min_asset_files"]),
@@ -277,6 +310,7 @@ def main() -> int:
              >= 0.95 * ev["asset_user_links"]),
             ("project UnityEvent calls shown ≥ 90%", ev["project_calls_shown"]
              >= 0.9 * ev["project_calls"]),
+            ("unused lists nothing the assets use", not ev["unused_but_data"]),
         ]
         failed = [name for name, ok in gates if not ok]
         print("\ncorpus gates: " + ("pass" if not failed else "FAIL: " + ", ".join(failed)))
@@ -284,7 +318,7 @@ def main() -> int:
             out = {k: v for k, v in ev.items() if k != "code_unused_but_used"}
             out.update(commit=CORPUS_COMMIT, index_s=round(index_s, 2),
                        asset_files=truth["asset_files"], scripts=len(truth["scripts"]),
-                       code_unused_but_used=len(unused))
+                       code_unused_but_used=len(trap))
             Path(args.json).write_text(json.dumps(out, indent=2))
         return 1 if failed else 0
     finally:

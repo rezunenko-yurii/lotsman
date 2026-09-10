@@ -20,7 +20,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "11"
+INDEX_VERSION = "12"
 
 
 @dataclass

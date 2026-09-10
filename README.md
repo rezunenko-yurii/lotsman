@@ -314,6 +314,7 @@ the agent should only see the next useful piece.
 | `refs NAME` | Name-based usage candidates as `path:line,line` | Type-resolved proof | You need places to inspect |
 | `change Type.Member` | Definition, overrides/implementations, callers `file:line` in the type family, tests marked | A compiler's verdict | You are about to change a signature, rename or remove a member |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
+| `unused [PATH]` | C# types/methods no code, asset or string names, members folded into their type; counts of what may run without a name | Proof of death: reflection, other repos, CI | You look for dead code to delete |
 | `unity FILE [USES]` | Unity: the assembly (asmdef) compiling a file/type, its references `asmdef:line`, who references it, targets it builds for, `#if` branches with where each compiles, undefined symbols, define sites; with USES, whether that code is visible | A compiler's verdict; defines set by build scripts | You add a dependency across assemblies, ask what recompiles, or whether code runs on a platform/in the Editor |
 
 Map budget is output budget, not index depth. `map --budget 5000` gives the
@@ -413,6 +414,10 @@ generated, minified and asset-heavy trees in `.lotsmanignore`.
   `change` add UnityEvent calls and animation events naming the method and
   assets serializing a field; `impact` has an "Assets" section. A rename
   there breaks nothing at compile time, so these sections are the warning.
+- `lotsman unused [PATH]` lists C# types and methods nothing names in
+  code, assets or strings, and counts what may run without a name (Unity
+  messages, `[Test]`/`[MenuItem]`, reflection-created types) instead of
+  listing it.
 - `lotsman unity missing` lists missing scripts, stale UnityEvent calls
   (the target type no longer has the method), calls whose target is gone and
   animation events naming no indexed method.
@@ -538,6 +543,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it, build targets and `#if` verdicts per target; with USES, whether TARGET's code can see it |
 | `lotsman unity errors [--log PATH]` | Unity: errors of the last compilation in the Editor log, deduped, with a staleness flag when sources changed after the log |
 | `lotsman unity missing` | Unity: missing scripts, UnityEvent calls to methods the target type lacks, calls without a target, animation events naming no method |
+| `lotsman unused [PATH] [-k N] [--json]` | C#: types and methods nothing names — no code use outside their own body, no asset (script GUID, UnityEvent call, animation event), no string literal; counts by reason what may run without a name (Unity messages, overrides, `[Test]`/`[MenuItem]`, reflection-created types, `-executeMethod` entry points, package API) |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates; C#: methods whose parameter count changed since the last index get their call sites checked (`breaks` / `maybe` with `file:line`); Unity: assets bound to the changed files |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |
@@ -567,6 +573,11 @@ Freshness:
   assets, and `SendMessage`/`Invoke` by string are not covered; animation
   events match by method name only (the receiver is not in the clip);
   UnityEvent calls on a GameObject target (engine methods) are skipped.
+- `unused` is name-based: a name used anywhere keeps every symbol of that
+  name (unused overloads and same-name methods are missed), public API that
+  other repositories use is listed, and code run by computed strings, DI
+  config outside the index or CI `-executeMethod` is only caught by the
+  heuristics it names. C# only.
 - PHP references are lexical today.
 - Reflection, DI and generated code can be missed;
   add `.lotsman/wiring.json` patterns when the repo encodes important edges in

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **`lotsman unused [PATH]` — C# types and methods nothing names.** A
+  candidate has no code identifier outside its own body (bare camelCase and
+  `_underscore` names checked by text), no asset use (the script's GUID; a
+  UnityEvent call, also one set by a prefab-instance override; an animation
+  event) and no string literal naming it (`Invoke("M")`, a type looked up by
+  its full name or a long tail of it). What nothing names but may still run
+  is counted by reason, not listed: Unity messages and runtime conventions
+  (`Dispose`, `ShouldSerializeX`, `IsExternalInit`), overrides, public
+  members of types implementing an external interface, attributed code
+  (`[Test]`, `[MenuItem]`, …, and the types holding it), types created by
+  reflection (Unity's `Editor`, `PropertyDrawer`, build callbacks, or a base
+  the code enumerates: `GetTypesDerivedFrom<T>()`), Editor methods
+  `-executeMethod` can call, and public API of `package.json` folders.
+  Members fold into their unused type; the header counts the non-public
+  ones. Chop Chop: 391 → 108 candidates against code identifiers alone
+  (14 of 20 sampled were used there: messages, animation events, prefabs),
+  none of them used by an asset (bench gate). Unity project: 2,969 → 160;
+  five fresh random samples of 30 had 6, 3, 1, 3, 1 false positives before
+  the fixes each prompted (≤ 20% every time), none of those 14 listed now.
+  0.2 s / 0.8 s. UnityEvent calls set by prefab overrides also show in
+  `refs`/`change`. Index format 12.
 - **Unity assets in `refs`, `change`, `impact` and `unity missing`.** Text
   YAML assets (prefabs, scenes, ScriptableObjects, clips, controllers, …) and
   `.meta` GUIDs are indexed. `refs Type` lists the assets whose components use

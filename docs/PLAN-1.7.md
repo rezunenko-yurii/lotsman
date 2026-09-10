@@ -5,9 +5,9 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-11: A1, P1, U0, V1, G1 and U1 done and committed too;
-**next: X1–X5** (public corpus: Chop Chop, see G1; X1's "no code use" trap
-is now covered by U1's asset users). B0 now 45,960 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1 and X1 done and
+committed too; **next: X2–X5** (X1 is CLI-only: no MCP tool budget left).
+B0 now 45,960 tokens, found 0.99 (X1 has no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -522,6 +522,42 @@ project; B0 has no V1 question — the harness cannot seed edits):
   code, data or asset references, excluding Unity messages (`Awake`,
   `Update`, …), serialized callbacks and public package API; always labelled
   candidates with the reason. Done: false positives ≤ 20% on a manual sample.
+
+  Status: **done** (2026-09-11). `lotsman unused [PATH] [-k N] [--json]`
+  (`lotsman/unused.py`; CLI only — MCP tool budget spent). Candidate = no
+  code identifier outside its own body (plus a text check for bare
+  camelCase/`_x` names the index skips), no asset use (script GUID;
+  UnityEvent call or animation event by method name), no C# string literal
+  naming it (whole name, dotted, or a CamelCase tail ≥ 10 chars for
+  `FindTypeExact("ProbeTail")`-style lookups). Counted, not listed: Unity
+  messages + runtime conventions (`Dispose`, `ShouldSerialize*`,
+  `IsExternalInit`), overrides/explicit impls, public members of types with
+  an external `I*` base, attributed code (any attribute outside an inert
+  list; the type holding it goes too), reflection-created types (Unity
+  bases incl. build callbacks; project bases the code enumerates via
+  `*Types*/*Derived*/*Implement*<T>` or `typeof(T).IsAssignableFrom`),
+  Editor `public static void X()` (`-executeMethod`), public API under a
+  `package.json` folder. A type is kept when a nested type (or, for static
+  classes, a member) is used; members fold into unused types. Also fixed
+  on the way (U1 gap): UnityEvent calls set by prefab-instance overrides
+  (`propertyPath: ….m_MethodName`) are indexed — 17 in Chop Chop, 56 in
+  SDK-Kitchen; index format 12.
+  Measured. Baseline = code identifiers only (what `refs` shows): Chop Chop
+  391 candidates, 14/20 sampled used (Unity messages, overrides, animation
+  events, UnityEvents, prefab scripts); SDK-Kitchen 2,969, ≥ 17/20 used
+  ([Test] methods, extension classes, build callbacks). `unused`: Chop Chop
+  108 — every candidate of the first run (116) checked by grep + GUID: 6
+  used (`_underscore` properties, fixed), the rest dead or unused DOTween
+  API; bench gate "lists nothing the assets use" = 0, X1-trap scripts
+  listed 0/107. SDK-Kitchen 160 — five fresh random samples of 30, each
+  judged before the fix it prompted: 6 (ShouldSerialize ×4, IsExternalInit,
+  GetTypesDerivedFrom module), 3 (multi-line [TestCase] ×2, name-tail
+  lookup), 1 (type kept by its nested type), 3 (`…FromCommandLine`
+  -executeMethod entry points), 1 (IPostGenerateGradleAndroidProject) —
+  20/10/3/10/3%; none of the 14 listed now. Most remaining SDK-Kitchen
+  candidates are public SDK components no Kitchen prefab uses (API for
+  games): the header counts the non-public ones. Cost: 0.2 s / 0.8 s; cold
+  index unchanged (SDK-Kitchen 3.97–4.01 s).
 - **X2. "Why does A depend on B"** `lotsman why A B`: shortest reference path
   between two files/types with the names on each edge (idea from
   uasset-reference-mcp `trace_path`).

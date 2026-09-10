@@ -263,6 +263,19 @@ def cmd_unity(args) -> int:
     return 1 if out.startswith("(") else 0
 
 
+def cmd_unused(args) -> int:
+    from lotsman import unused
+    root = _root(args)
+    store = _open(root)
+    rep = unused.collect_unused(store, root, args.path or "")
+    store.close()
+    if args.json:
+        print(json.dumps(unused.unused_json(rep), indent=2))
+    else:
+        print(unused.render_unused(rep, args.limit))
+    return 0
+
+
 def cmd_impact(args) -> int:
     from lotsman import impact
     root = _root(args)
@@ -410,6 +423,13 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_change)
 
+    sp = sub.add_parser("unused", help="C# types and methods nothing names (code, "
+                                       "assets, strings): candidates, not proof")
+    sp.add_argument("path", nargs="?", help="folder or file to list (default: all)")
+    sp.add_argument("-k", "--limit", type=int, default=40, help="candidates shown")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_unused)
+
     sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
                                       "compiling a file/type, its references, who "
                                       "references it, #if branches per target; "
@@ -464,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
 
 # Read commands whose use is worth measuring (`lotsman report`).
 LOGGED_COMMANDS = frozenset({"map", "search", "outline", "slice", "defs",
-                             "refs", "impact", "change", "unity"})
+                             "refs", "impact", "change", "unity", "unused"})
 
 
 def _run_logged(args, root: Path) -> int:

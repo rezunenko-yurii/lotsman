@@ -570,6 +570,49 @@ class Store:
             "JOIN files f ON f.id = a.file_id WHERE a.kind = ? ORDER BY f.path, a.line",
             (kind,)).fetchall()
 
+    def asset_keys(self, kind: str) -> set[str]:
+        return {k for (k,) in self.conn.execute(
+            "SELECT DISTINCT key FROM asset_refs WHERE kind = ?", (kind,))}
+
+    def meta_guids(self) -> dict[str, str]:
+        """path (without `.meta`) -> GUID for every indexed `.meta`."""
+        return {path[:-5]: guid for guid, path in self.conn.execute(
+            "SELECT g.guid, f.path FROM guids g JOIN files f ON f.id = g.file_id")}
+
+    # --- unused candidates (unused) ----------------------------------------
+
+    def symbols_of_lang(self, lang: str, kinds: tuple[str, ...]) -> list[SymbolRow]:
+        cur = self.conn.execute(
+            "SELECT f.path, s.name, s.kind, s.line, s.end_line, s.signature "
+            "FROM symbols s JOIN files f ON f.id = s.file_id "
+            f"WHERE f.lang = ? AND s.kind IN ({','.join('?' * len(kinds))}) "
+            "ORDER BY f.path, s.line", (lang, *kinds))
+        return [SymbolRow(*row) for row in cur]
+
+    def ident_lines(self, names: list[str]) -> dict[str, list[tuple[str, list[int]]]]:
+        """name -> (path, lines) of every file naming it."""
+        out: dict[str, list[tuple[str, list[int]]]] = defaultdict(list)
+        for i in range(0, len(names), 500):
+            chunk = names[i:i + 500]
+            for name, path, lines in self.conn.execute(
+                    "SELECT i.name, f.path, i.lines FROM idents i "
+                    "JOIN files f ON f.id = i.file_id "
+                    f"WHERE i.name IN ({','.join('?' * len(chunk))})", chunk):
+                out[name].append((path, _decode_lines(lines)))
+        return out
+
+    def paths_of_lang(self, lang: str) -> list[str]:
+        return [p for (p,) in self.conn.execute(
+            "SELECT path FROM files WHERE lang = ? ORDER BY path", (lang,))]
+
+    def all_bases(self) -> list[tuple[str, str]]:
+        return self.conn.execute("SELECT DISTINCT type_name, base_name FROM bases").fetchall()
+
+    def paths_named(self, filename: str) -> list[str]:
+        return [p for (p,) in self.conn.execute(
+            "SELECT path FROM files WHERE path = ? OR path LIKE ?",
+            (filename, "%/" + filename))]
+
     def has_file(self, path: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None
 

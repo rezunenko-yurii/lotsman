@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Query log covers the CLI and switches itself off.** A flag file
+  `.lotsman/querylog.on` under the indexed root turns logging on for CLI read
+  commands (`map`, `search`, `outline`, `slice`, `defs`, `refs`, `impact`) and
+  MCP alike; each row records `via: cli|mcp`. The flag holds its last day
+  (`until 2026-09-17`) or expires 14 days after it was created, so a
+  measurement week cannot silently become permanent. `LOTSMAN_QUERYLOG=0`
+  disables logging even with the flag (benchmarks use it); `lotsman report`
+  shows the state and the CLI/MCP split.
+
 ## 1.6.0 — 2026-09-10
 
 C# / Unity release: references that see how C# code actually uses types,

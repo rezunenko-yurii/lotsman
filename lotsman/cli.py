@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 import time
@@ -363,4 +364,39 @@ def main(argv: list[str] | None = None) -> int:
     sp.set_defaults(fn=cmd_mcp)
 
     args = p.parse_args(argv)
+    if args.cmd in LOGGED_COMMANDS:
+        root = Path(args.repo).resolve()
+        if querylog.enabled(root):
+            return _run_logged(args, root)
     return args.fn(args)
+
+
+# Read commands whose use is worth measuring (`lotsman report`).
+LOGGED_COMMANDS = frozenset({"map", "search", "outline", "slice", "defs",
+                             "refs", "impact"})
+
+
+def _run_logged(args, root: Path) -> int:
+    """Run a command while teeing stdout, then log what the caller saw."""
+    real, captured = sys.stdout, io.StringIO()
+
+    class _Tee:
+        def write(self, text: str) -> int:
+            captured.write(text)
+            return real.write(text)
+
+        def flush(self) -> None:
+            real.flush()
+
+        def __getattr__(self, name):  # encoding, isatty, ...
+            return getattr(real, name)
+
+    sys.stdout = _Tee()
+    try:
+        code = args.fn(args)
+    finally:
+        sys.stdout = real
+    params = {k: v for k, v in vars(args).items()
+              if k not in ("fn", "cmd", "repo") and v not in (None, False, [])}
+    querylog.log(root, args.cmd, params, captured.getvalue(), via="cli")
+    return code

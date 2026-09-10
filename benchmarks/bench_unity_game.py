@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lotsman import indexer  # noqa: E402
+from lotsman import indexer, refsview, unityassets  # noqa: E402
 from lotsman.store import TYPE_KINDS, Store  # noqa: E402
 
 CORPUS_REPO = "https://github.com/UnityTechnologies/open-project-1.git"
@@ -75,6 +75,14 @@ def fetch(dest: Path) -> Path:
     return dest / PROJECT_SUBDIR
 
 
+CALL_RE = re.compile(
+    r"- m_Target: \{fileID: (-?\d+)(?:, guid: ([0-9a-f]{32}))?[^}\n]*\}\s*\n"
+    r"(?:[ \t]*m_TargetAssemblyTypeName:[ \t]*([^\n]*)\n)?[ \t]*m_MethodName:[ \t]*(\w*)")
+DOC_SCRIPT_RE = re.compile(
+    r"^--- !u!114 &(-?\d+).*?^  m_Script: \{fileID: 11500000, guid: ([0-9a-f]{32})",
+    re.M | re.S)
+
+
 def build_truth(project: Path) -> dict:
     assets_dir = project / "Assets"
     scripts: dict[str, str] = {}            # guid -> Assets-relative .cs path
@@ -82,11 +90,24 @@ def build_truth(project: Path) -> dict:
         m = GUID_RE.search(meta.read_text(encoding="utf-8", errors="replace"))
         if m:
             scripts[m.group(1)] = meta.relative_to(assets_dir).as_posix()[:-5]
+    stems = {Path(p).stem for p in scripts.values()}
+    code = "\n".join((assets_dir / p).read_text(encoding="utf-8", errors="replace")
+                     for p in scripts.values())
     users: dict[str, set[str]] = defaultdict(set)      # script path -> asset files
-    data_calls: dict[tuple[str, str], set[str]] = defaultdict(set)  # (type, method) -> files
+    # UnityEvent calls by category: (owner, method) -> files
+    calls: dict[str, dict[tuple[str, str], set[str]]] = {
+        "project": defaultdict(set), "stale": defaultdict(set), "no_target": defaultdict(set),
+        "engine": defaultdict(set), "unresolved": defaultdict(set)}
     anim_calls: dict[str, set[str]] = defaultdict(set)
     asset_files = 0
     by_ext = Counter()
+    declared: dict[str, bool] = {}
+
+    def is_declared(method: str) -> bool:
+        if method not in declared:
+            declared[method] = bool(re.search(rf"[\w>\]]\s+{re.escape(method)}\s*[({{=;]", code))
+        return declared[method]
+
     for path in assets_dir.rglob("*"):
         if path.suffix == ".meta" and not path.name.endswith(".cs.meta") and path.is_file():
             # Model import settings carry animation events of their clips.
@@ -104,47 +125,80 @@ def build_truth(project: Path) -> dict:
             if guid in scripts:
                 users[scripts[guid]].add(rel)
         if "m_PersistentCalls" in text:
-            # Each call: m_Target … m_TargetAssemblyTypeName … m_MethodName.
-            for block in text.split("- m_Target: ")[1:]:
-                t, m = TARGET_TYPE_RE.search(block), METHOD_RE.search(block)
-                if m and m.group(1):
-                    owner = t.group(1).rsplit(".", 1)[-1] if t else "?"
-                    data_calls[(owner, m.group(1))].add(rel)
+            local = {fid: guid for fid, guid in DOC_SCRIPT_RE.findall(text)}
+            for fid, guid, type_name, method in CALL_RE.findall(text):
+                if not method:
+                    continue
+                method = method[4:] if method.startswith(("set_", "get_")) else method
+                owner = ""
+                if fid in local and local[fid] in scripts:
+                    owner = Path(scripts[local[fid]]).stem
+                elif type_name.strip():
+                    owner = type_name.split(",")[0].strip().replace("+", ".").rsplit(".", 1)[-1]
+                if fid == "0" and not guid:
+                    kind = "no_target"
+                elif fid in local and local[fid] not in scripts:
+                    kind = "unresolved"  # the component's script is a package's or gone
+                elif owner not in stems:
+                    kind = "engine"      # UnityEngine / package type, or an asset target
+                else:
+                    kind = "project" if is_declared(method) else "stale"
+                calls[kind][(owner, method)].add(rel)
         for fn in set(ANIM_EVENT_RE.findall(text)):
             anim_calls[fn].add(rel)
-    return {"scripts": scripts, "users": users, "data_calls": data_calls,
+    return {"scripts": scripts, "users": users, "calls": calls,
             "anim_calls": anim_calls, "asset_files": asset_files, "by_ext": by_ext}
 
 
-def lotsman_sites(store: Store, name: str) -> set[str]:
-    return {p for p, _, _ in store.reference_sites(name)}
-
-
 def evaluate(project: Path, store: Store, truth: dict) -> dict:
-    users, data_calls = truth["users"], truth["data_calls"]
-    # Script → asset users: does `refs <MainType>` list any of the asset files?
-    shown = total = scripts_hit = 0
-    code_unused_but_used = []
+    """What `refs` / `unity missing` report, through the same functions."""
+    users, calls = truth["users"], truth["calls"]
+    uses_cache: dict[str, object] = {}
+
+    def uses(name: str):
+        if name not in uses_cache:
+            uses_cache[name] = refsview.asset_uses(store, [name], store.symbols_named(name))
+        return uses_cache[name]
+
+    shown = total = scripts_hit = extra = 0
+    code_unused_but_used, x1_now_visible = [], 0
     for script, files in sorted(users.items()):
         main = Path(script).stem
-        sites = lotsman_sites(store, main)
-        hit = len(files & sites)
-        shown += hit
+        u = uses(main)
+        got = {x.path for x in u.scripts} if u else set()
+        shown += len(files & got)
+        extra += len(got - files)
         total += len(files)
-        scripts_hit += bool(hit)
-        code_sites = {p for p in sites if p.endswith(".cs") and p != script}
+        scripts_hit += bool(files & got)
+        code_sites = {p for p, _, _ in store.reference_sites(main)
+                      if p.endswith(".cs") and p != script}
         if not code_sites:
             code_unused_but_used.append((script, len(files)))
-    # Data-called methods: does `refs <Method>` list the asset that calls it?
-    dm_hit = 0
-    for (owner, method), files in data_calls.items():
-        dm_hit += bool(files & lotsman_sites(store, method))
-    anim_hit = sum(bool(f & lotsman_sites(store, fn)) for fn, f in truth["anim_calls"].items())
+            x1_now_visible += bool(files & got)
+    project_calls = calls["project"]
+    pc_hit = sum(bool(files & {x.path for x in (uses(m).calls if uses(m) else [])})
+                 for (_, m), files in project_calls.items())
+    anim_hit = sum(bool(f & {x.path for x in (uses(fn).anims if uses(fn) else [])})
+                   for fn, f in truth["anim_calls"].items() if store.symbols_named(fn))
+    anim_defined = sum(1 for fn in truth["anim_calls"] if store.symbols_named(fn))
+    missing = unityassets.render_missing(store, project / "Assets")
+    stale_hit = sum(any(f"{f}:" in line and line.endswith(f".{m}")
+                        for f in files for line in missing.splitlines())
+                    for (_, m), files in calls["stale"].items())
+    nt_hit = sum(any(f"{f}:" in line and line.endswith(m)
+                     for f in files for line in missing.splitlines())
+                 for (_, m), files in calls["no_target"].items())
     return {"asset_user_links": total, "asset_user_links_shown": shown,
+            "asset_user_links_extra": extra,
             "scripts_with_users": len(users), "scripts_with_users_shown": scripts_hit,
-            "data_methods": len(data_calls), "data_methods_shown": dm_hit,
-            "anim_methods": len(truth["anim_calls"]), "anim_methods_shown": anim_hit,
-            "code_unused_but_used": code_unused_but_used}
+            "project_calls": len(project_calls), "project_calls_shown": pc_hit,
+            "stale_calls": len(calls["stale"]), "stale_calls_shown": stale_hit,
+            "no_target_calls": len(calls["no_target"]), "no_target_calls_shown": nt_hit,
+            "engine_calls": len(calls["engine"]),
+            "unresolved_calls": len(calls["unresolved"]),
+            "anim_methods": anim_defined, "anim_methods_shown": anim_hit,
+            "anim_orphans": len(truth["anim_calls"]) - anim_defined,
+            "code_unused_but_used": code_unused_but_used, "x1_now_visible": x1_now_visible}
 
 
 def main() -> int:
@@ -187,24 +241,42 @@ def main() -> int:
         pct = lambda a, b: f"{100 * a / b:.0f}%" if b else "-"  # noqa: E731
         rows = [
             ("scripts used by assets (m_Script)", ev["scripts_with_users"],
-             ev["scripts_with_users_shown"]),
-            ("script → asset links", ev["asset_user_links"], ev["asset_user_links_shown"]),
-            ("methods called by UnityEvents", ev["data_methods"], ev["data_methods_shown"]),
-            ("methods called by animation events", ev["anim_methods"],
-             ev["anim_methods_shown"]),
+             ev["scripts_with_users_shown"], "refs"),
+            ("script → asset links", ev["asset_user_links"], ev["asset_user_links_shown"],
+             "refs"),
+            ("UnityEvent calls to project methods", ev["project_calls"],
+             ev["project_calls_shown"], "refs"),
+            ("animation-event methods (defined)", ev["anim_methods"],
+             ev["anim_methods_shown"], "refs"),
+            ("stale UnityEvent calls (method gone)", ev["stale_calls"],
+             ev["stale_calls_shown"], "unity missing"),
+            ("UnityEvent calls without a target", ev["no_target_calls"],
+             ev["no_target_calls_shown"], "unity missing"),
         ]
-        print(f"{'serialized reference':38} {'truth':>6} {'refs':>6} {'shown':>6}")
-        for label, t, s in rows:
-            print(f"{label:38} {t:6} {s:6} {pct(s, t):>6}")
+        print(f"{'serialized reference':40} {'truth':>6} {'shown':>6} {'%':>5}  by")
+        for label, t, s_, by in rows:
+            print(f"{label:40} {t:6} {s_:6} {pct(s_, t):>5}  {by}")
+        print(f"(script links lotsman lists that the truth lacks: "
+              f"{ev['asset_user_links_extra']}; UnityEvent calls into Unity/package types: "
+              f"{ev['engine_calls']}, on components whose script is a package's or missing "
+              f"(listed by `unity missing` as unresolved scripts): {ev['unresolved_calls']}; "
+              f"animation events naming no project "
+              f"method: {ev['anim_orphans']})")
         unused = ev["code_unused_but_used"]
         print(f"\nX1 trap: {len(unused)} scripts used by assets for which `refs` finds no "
-              f"code use outside their own file, e.g. "
+              f"code use outside their own file; `refs` lists asset users for "
+              f"{ev['x1_now_visible']} of them, e.g. "
               + ", ".join(f"{Path(s).stem} ({n})" for s, n in sorted(unused, key=lambda x: -x[1])[:5]))
         gates = [
             ("scripts", len(truth["scripts"]) >= GATES["min_scripts"]),
             ("asset files", truth["asset_files"] >= GATES["min_asset_files"]),
             ("scripts used by assets", ev["scripts_with_users"] >= GATES["min_script_users"]),
-            ("data-called methods", ev["data_methods"] >= GATES["min_data_methods"]),
+            ("UnityEvent calls", ev["project_calls"] + ev["stale_calls"]
+             >= GATES["min_data_methods"]),
+            ("script links shown ≥ 95%", ev["asset_user_links_shown"]
+             >= 0.95 * ev["asset_user_links"]),
+            ("project UnityEvent calls shown ≥ 90%", ev["project_calls_shown"]
+             >= 0.9 * ev["project_calls"]),
         ]
         failed = [name for name, ok in gates if not ok]
         print("\ncorpus gates: " + ("pass" if not failed else "FAIL: " + ", ".join(failed)))

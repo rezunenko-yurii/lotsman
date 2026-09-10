@@ -385,11 +385,12 @@ Lotsman works best when code has stable named symbols in ordinary source files.
 | Best | Python, JavaScript, TypeScript/TSX, Go, Rust, Java, C/C++, Ruby, C#, PHP | tree-sitter definitions; tree-sitter references except PHP, where references are lexical today |
 | Configs | JSON (`.json`, JSON `.rc`) | type names, member-named keys and values count as references (`refs`/`change` `data —` block); keys in `outline` |
 | Unity conditional code | C# `#if`/`#elif`/`#else`, Player Settings defines, `csc.rsp`, asmdef `versionDefines`/`defineConstraints` | `[#if X]` marks in `outline`; per-target verdicts (Editor, iOS, Android, …) and undefined symbols in `unity` |
+| Unity assets | text YAML prefabs, scenes, ScriptableObjects, clips, controllers; `.meta` GUIDs | scripts used by assets, UnityEvent / animation-event calls and serialized fields in `refs`, `change`, `impact`; broken references in `unity missing` |
 | Unity assemblies | `.asmdef`, `.asmref` (GUIDs from `.meta`) | file → assembly (predefined `Assembly-CSharp*` rules included), references and reverse references, visibility checks in `unity`, an `assembly:` line in `outline`, `change` flags callers whose assembly cannot see the definition |
 | Docs | Markdown (`.md`) | heading sections in `outline`, full-text section search in Russian and English (needs SQLite FTS5; `doctor` checks), binding docs marked |
 | Useful fallback | Kotlin, Swift, Scala, Lua, Bash and other source-like text | file discovery, regex definitions where patterns match, lexical identifiers |
 | Needs cleanup | minified bundles, generated code, vendored SDKs, copied dependencies | noisy maps unless ignored |
-| Out of scope | cross-repo type resolution, runtime reflection, DI wiring, serialized scene refs | candidate discovery only |
+| Out of scope | cross-repo type resolution, runtime reflection, DI wiring, binary-serialized assets | candidate discovery only |
 
 Practical rule: keep your index broad, but keep your corpus clean. Put vendor,
 generated, minified and asset-heavy trees in `.lotsmanignore`.
@@ -406,8 +407,15 @@ generated, minified and asset-heavy trees in `.lotsmanignore`.
   they are not searched or ranked.
 - Folders Unity does not compile (`Samples~/`, dot-folders) are skipped when
   the root is a Unity project or its `Assets/` folder.
-- Serialized references in scenes, prefabs and ScriptableObjects are
-  invisible — they live in YAML assets, not in code.
+- Text YAML assets (prefabs, scenes, ScriptableObjects, clips, controllers)
+  and `.meta` GUIDs are indexed: `refs Type` adds the assets using the script
+  (by GUID, plus prefab instances/variants carrying it), `refs Member` and
+  `change` add UnityEvent calls and animation events naming the method and
+  assets serializing a field; `impact` has an "Assets" section. A rename
+  there breaks nothing at compile time, so these sections are the warning.
+- `lotsman unity missing` lists missing scripts, stale UnityEvent calls
+  (the target type no longer has the method), calls whose target is gone and
+  animation events naming no indexed method.
 
 ### Mixed-Language Repos
 
@@ -427,7 +435,7 @@ What stays heuristic:
 
 - `refs` and `impact` match by names across the shared index; they do not prove
   real cross-language runtime links;
-- generated bindings, serialized scene/prefab references, reflection, DI and
+- generated bindings, prefab-instance field overrides, reflection, DI and
   config-driven wiring may be invisible unless you seed stable names through
   `wiring.json` as described in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md);
 - cross-repository contracts are out of scope unless the code is in the same
@@ -525,11 +533,12 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman outline FILE` | show symbol ranges in one file |
 | `lotsman slice FILE TARGET` | return one symbol body plus its local skeleton (enclosing types, nearest siblings) |
 | `lotsman defs NAME` | show definitions of a symbol |
-| `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups |
-| `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked |
+| `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups; Unity: assets using the script, UnityEvent/animation-event calls, serialized fields |
+| `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked; Unity: assets binding it |
 | `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it, build targets and `#if` verdicts per target; with USES, whether TARGET's code can see it |
 | `lotsman unity errors [--log PATH]` | Unity: errors of the last compilation in the Editor log, deduped, with a staleness flag when sources changed after the log |
-| `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates; C#: methods whose parameter count changed since the last index get their call sites checked (`breaks` / `maybe` with `file:line`) |
+| `lotsman unity missing` | Unity: missing scripts, UnityEvent calls to methods the target type lacks, calls without a target, animation events naming no method |
+| `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates; C#: methods whose parameter count changed since the last index get their call sites checked (`breaks` / `maybe` with `file:line`); Unity: assets bound to the changed files |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |
 | `lotsman stats` | show index statistics |
@@ -554,8 +563,12 @@ Freshness:
   calls whose receiver is declared as another type, but cannot resolve
   `var`/DI receivers or named arguments; calls through a base type are
   checked against the changed override.
+- Unity assets: prefab-instance overrides of fields, binary-serialized
+  assets, and `SendMessage`/`Invoke` by string are not covered; animation
+  events match by method name only (the receiver is not in the clip);
+  UnityEvent calls on a GameObject target (engine methods) are skipped.
 - PHP references are lexical today.
-- Reflection, DI, generated code and serialized scene references can be missed;
+- Reflection, DI and generated code can be missed;
   add `.lotsman/wiring.json` patterns when the repo encodes important edges in
   config.
 - Static embeddings help with related vocabulary, not deep semantic reasoning.

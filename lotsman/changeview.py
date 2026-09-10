@@ -20,7 +20,9 @@ MAX_FAMILY_DEPTH = 6
 MAX_FAMILY_TYPES = 200
 CALLERS_SHOWN = 25
 IMPLS_SHOWN = 20
-NOT_COVERED = "asset (prefab/scene) references and reflection by string name"
+NOT_COVERED = "reflection by string name"
+UNITY_NOT_COVERED = ("; prefab-instance overrides of fields, binary-serialized assets, "
+                     "SendMessage/Invoke by string")
 
 
 @dataclass
@@ -245,5 +247,33 @@ def render_change(store: Store, target: str, limit: int = CALLERS_SHOWN) -> str:
     if rep.name_only:
         lines.append(f"name-only: {rep.name_only} more files use `{rep.member}` on types "
                      f"outside this family (not listed; `refs {rep.member}` lists them)")
-    lines.append(f"not covered: {NOT_COVERED}")
+    lines += _asset_lines(store, rep, limit)
+    is_unity = store.get_meta(unity.META_UNITY_ASSETS) is not None
+    lines.append(f"not covered: {NOT_COVERED}" + (UNITY_NOT_COVERED if is_unity else ""))
     return "\n".join(lines)
+
+
+def asset_uses(store: Store, rep: ChangeReport):
+    """Unity: assets that break silently — scripts bound by GUID, UnityEvent
+    and animation-event calls by method name, serialized fields by key.
+    None outside Unity projects."""
+    from lotsman import unityassets
+    if not rep.defs or store.get_meta(unity.META_UNITY_ASSETS) is None:
+        return None
+    owners = None
+    if rep.owner and not rep.extension:
+        supers, subs = _family(store, rep.owner)
+        owners = {rep.owner} | supers | {t for t, _, _ in subs}
+    return unityassets.collect_uses(store, rep.member or rep.owner, rep.defs, owners)
+
+
+def _asset_lines(store: Store, rep: ChangeReport, limit: int) -> list[str]:
+    from lotsman import unityassets
+    uses = asset_uses(store, rep)
+    if not uses:
+        return []
+    out = unityassets.render_uses(uses, min(limit, unityassets.FILES_SHOWN))
+    if uses.scripts:
+        out.append("  (bound by the .meta GUID: rename the file together with the class "
+                   "and keep its .meta)")
+    return out

@@ -5,8 +5,9 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10 (later session): A1, P1, U0, V1 and G1 done and committed
-too; **next: U1, then X1–X5** (public corpus: Chop Chop, see G1). B0 now 45,869 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-11: A1, P1, U0, V1, G1 and U1 done and committed too;
+**next: X1–X5** (public corpus: Chop Chop, see G1; X1's "no code use" trap
+is now covered by U1's asset users). B0 now 45,960 tokens, found 0.99. Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -440,6 +441,36 @@ prefabs followed by GUID.
 - Done when: on the game corpus (G1) prefabs using a script and methods
   called from UnityEvents match a manual check on ≥ 10 samples.
 
+Status: **done** (2026-09-11). `lotsman/unityassets.py`: text YAML assets
+(`.prefab .unity .asset .anim .controller .overrideController .playable
+.signal .mixer`, `%YAML` header required, ≤ 50 MB) → `asset_refs` rows
+(script GUID, UnityEvent call, animation event, serialized field, nested
+prefab source); `.meta` → `guids`. GUIDs are resolved at query time, so a
+`.meta` written later needs no re-parse. Call owner: target asset GUID →
+target gone (fileID 0) → the target component's local `m_Script` → type
+name (stale names lose to the script) → none (GameObject target, skipped).
+`stripped` MonoBehaviours count as uses (Chop Chop's CameraManager: 1 → 17
+files). Stale calls = the owner's indexed family lacks the member, minus
+`UNITY_INHERITED` (members inherited from Unity classes). Missing scripts =
+GUIDs in no indexed `.meta`, no on-disk `.cs.meta` under the root (ignored
+folders count), `Packages/` or `Library/PackageCache`; without a package
+cache they are "unresolved", 3 lines + hint. Output: `refs` / `change`
+sections, `impact` "Assets", `unity missing`, `--json` `assets` keys.
+Measured: Chop Chop bench 100% of every truth category — 764/764 script →
+asset links (218 scripts), 18/18 UnityEvent calls to project code, 24/24
+animation-event methods, 7/7 stale calls, 2/2 target-less calls, 0 extra
+links; all 107 X1-trap scripts show asset users. Manual check: 10/10 random
+scripts identical to grep of `m_Script` GUIDs; 10/10 random UnityEvent /
+animation-event sites point at the right `m_MethodName` line, 3 owners
+verified by hand. Cold index: Chop Chop 0.4 → 2.7 s (332 MB YAML);
+SDK-Kitchen 3.96 → 4.09 s (+3%). `refs` 0.12–0.18 s; `unity missing`
+0.15 s (Chop Chop), ~0.5 s (SDK-Kitchen: package cache scan). B0: data-04
+("prefabs using Node") 3 calls → 1, data-05 (missing scripts) 226 → 119
+tokens, 1 call; each `change` +14 tokens (Unity not-covered line); total
+45,869 → 45,960, found 0.99.
+Not covered (said in `change`): prefab-instance field overrides, binary
+assets, `SendMessage`/`Invoke` by string; animation events are name-only.
+
 **V1. Caller check after an edit (in `impact`).** For changed methods whose
 parameter count changed (old signature from the index before refresh vs new),
 count arguments at call sites in referencing files and list callers that
@@ -527,9 +558,7 @@ animation-event methods — `refs` shows 0 of each. 107 asset-used scripts
 have no code use `refs` finds (X1 trap). 19/41 UnityEvent calls have no
 `m_TargetAssemblyTypeName` (resolve the owner via the target's `m_Script`
 in U1). C# refs on this corpus: class 99.8%, method 98.5%, property 92%.
-Next: U1 — its done criterion ("≥ 10 samples match a manual check") can
-use this truth directly; target: script → asset links and data-called
-methods shown, with `file:line`.
+U1 took these to 100% (see U1).
 
 ## Order
 

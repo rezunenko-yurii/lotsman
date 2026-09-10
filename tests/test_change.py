@@ -117,7 +117,7 @@ class TestChange(unittest.TestCase):
         self.assertIn("Tests/Editor/GateTests.cs", out)
         self.assertIn("[test]", out)
         self.assertIn("name-only: 1 more files use `CanShow`", out)
-        self.assertIn("not covered: asset (prefab/scene) references", out)
+        self.assertIn("not covered: reflection by string name", out)
         self.assertNotIn("FrequencyPolicy.cs", out)
         self.assertEqual(changeview.render_change(self.store, "Nope.Nothing"),
                          "(`Nope.Nothing` not found in index)")

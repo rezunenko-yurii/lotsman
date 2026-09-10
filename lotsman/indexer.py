@@ -9,7 +9,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import callcheck, csdefines, docs, extract, jsonrefs, scanner, unity, wiring
+from lotsman import (callcheck, csdefines, docs, extract, jsonrefs, scanner, unity,
+                     unityassets, wiring)
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -19,7 +20,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "10"
+INDEX_VERSION = "11"
 
 
 @dataclass
@@ -163,8 +164,20 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         assembly = None
         directives = None
         arities = None
+        asset_refs = None
+        guid = None
         try:
-            if rec.lang == unity.ASMDEF_LANG:
+            if rec.lang == unityassets.ASSET_LANG:
+                # Serialized references only: scripts by GUID, UnityEvent and
+                # animation-event methods, serialized fields, nested prefabs.
+                symbols, idents, lines = [], Counter(), {}
+                asset_refs = unityassets.parse_asset(data)
+            elif rec.lang == unityassets.META_LANG:
+                symbols, idents, lines = [], Counter(), {}
+                guid = unityassets.meta_guid(data)
+                if unityassets.is_model_meta(rec.path):
+                    asset_refs = unityassets.parse_model_meta(data)
+            elif rec.lang == unity.ASMDEF_LANG:
                 # Assembly definitions: facts for `unity`/outline, no symbols.
                 # The GUID other asmdefs reference it by lives in the `.meta`.
                 symbols, idents, lines = [], Counter(), {}
@@ -214,7 +227,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines, doc_text, bases, assembly, directives, arities)
+            idents, lines, doc_text, bases, assembly, directives, arities, asset_refs, guid)
         if prev is None:
             result.added += 1
         else:

@@ -73,8 +73,8 @@ quality across several repo shapes.
 | Gin v1.10.0 | Go web framework | Go defs/refs, small-file framework layout, package-level APIs | implemented, quality-gated |
 | ripgrep 14.1.1 | Rust workspace/CLI | Rust traits/structs/functions, multi-crate workspace, long flag/search files | implemented, quality-gated |
 | Java service/library | Java backend | classes/interfaces, package layout, annotation-heavy code | planned |
-| C# / Unity project | C# game/tooling repo | static classes, enums, generics, attributes; serialized references that lotsman cannot see | `bench_unity.py`, quality-gated on a private corpus and on Chop Chop |
-| Chop Chop (Unity Open Project #1, pinned commit) | Unity 2020.3 game, content-heavy | prefabs/scenes/ScriptableObjects using scripts, UnityEvent and animation-event method calls — the serialized side `refs` does not see yet | `bench_unity_game.py`, baseline for U1/X1 |
+| C# / Unity project | C# game/tooling repo | static classes, enums, generics, attributes; serialized references (text YAML assets) | `bench_unity.py`, quality-gated on a private corpus and on Chop Chop |
+| Chop Chop (Unity Open Project #1, pinned commit) | Unity 2020.3 game, content-heavy | prefabs/scenes/ScriptableObjects using scripts, UnityEvent and animation-event method calls, broken references | `bench_unity_game.py`, gated since U1; baseline for X1 |
 
 WordPress release archives include bundled libraries and large JS/admin assets.
 The WordPress harness writes a fixture-local `.lotsmanignore` so the measured
@@ -397,6 +397,29 @@ target object's `m_Script`).
 Code side on the same corpus (`bench_unity.py --root …/Assets`): refs recall
 class 99.8%, method 98.5%, property 92.0%, enum/interface/struct/static
 class 100%, precision ≥ 99%; gates pass. Cold index 0.4 s.
+
+Run 2026-09-11 (after U1: assets and `.meta` GUIDs indexed). The truth now
+splits UnityEvent calls by target: project code (18), stale — the target
+type has no such method (7), no target object (2); the rest call Unity or
+package types and GameObjects, which `refs` does not list.
+
+| Serialized reference | Truth | Shown | By |
+|---|---:|---:|---|
+| scripts used by assets (`m_Script`) | 218 | 218 | `refs` |
+| script → asset links | 764 | 764 | `refs` |
+| UnityEvent calls to project methods | 18 | 18 | `refs` / `change` |
+| animation-event methods (defined) | 24 | 24 | `refs` |
+| stale UnityEvent calls (method gone) | 7 | 7 | `unity missing` |
+| UnityEvent calls without a target | 2 | 2 | `unity missing` |
+
+Script links lotsman lists that the truth lacks: 0. All 107 X1-trap scripts
+now show their asset users in `refs`. Gates: script links ≥ 95%, project
+UnityEvent calls ≥ 90%. Manual check (the U1 done criterion): 10 random
+scripts — asset users identical to grep of their `m_Script` GUID; 10 random
+UnityEvent/animation-event sites — each `file:line` is the `m_MethodName` /
+`functionName` line, 3 owners traced by hand. Cost: cold index 0.4 → 2.6 s
+(1,240 assets, 332 MB of YAML; the private Unity project +3%, 3.96 → 4.09 s);
+`refs` 0.12–0.18 s; `unity missing` 0.15 s.
 
 ## Early Recommendations
 

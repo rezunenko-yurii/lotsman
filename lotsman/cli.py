@@ -197,6 +197,9 @@ def cmd_refs(args) -> int:
             # binding to this shape must see the confidence level.
             "confidence": REFS_CONFIDENCE,
         }
+        from lotsman import unityassets
+        if result and (uses := refsview.asset_uses(store, parts, result.defs)) is not None:
+            payload["assets"] = unityassets.uses_json(uses)
         if len(parts) >= 2:
             payload["qualified"] = parts
         print(json.dumps(payload, ensure_ascii=False))
@@ -216,7 +219,10 @@ def cmd_change(args) -> int:
     root = _root(args)
     store = _open(root)
     if args.json:
+        from lotsman import unity, unityassets
         rep = changeview.collect_change(store, args.target)
+        uses = changeview.asset_uses(store, rep) if rep else None
+        is_unity = store.get_meta(unity.META_UNITY_ASSETS) is not None
         store.close()
         if rep is None:
             print(json.dumps({"target": args.target, "found": False}))
@@ -235,7 +241,9 @@ def cmd_change(args) -> int:
             "name_only_files": rep.name_only,
             "extension_method": rep.extension,
             "ambiguous_owners": rep.ambiguous_owners,
-            "not_covered": changeview.NOT_COVERED,
+            **({"assets": unityassets.uses_json(uses)} if uses is not None else {}),
+            "not_covered": changeview.NOT_COVERED
+            + (changeview.UNITY_NOT_COVERED if is_unity else ""),
             "confidence": REFS_CONFIDENCE,
         }, ensure_ascii=False))
         return 0
@@ -405,9 +413,11 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
                                       "compiling a file/type, its references, who "
                                       "references it, #if branches per target; "
-                                      "`unity errors`: compile errors")
-    sp.add_argument("target", help="file path, type/symbol name, assembly name, or "
-                                   "`errors` (compile errors from the Editor log)")
+                                      "`unity errors`: compile errors; "
+                                      "`unity missing`: broken asset references")
+    sp.add_argument("target", help="file path, type/symbol name, assembly name, "
+                                   "`errors` (compile errors from the Editor log) or "
+                                   "`missing` (missing scripts, stale UnityEvent calls)")
     sp.add_argument("uses", nargs="?", help="type, file or assembly the target's "
                                             "code wants to use: is it visible?")
     sp.add_argument("--log", help="Editor log for `unity errors` (default: the "

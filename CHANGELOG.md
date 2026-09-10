@@ -2,13 +2,33 @@
 
 ## Unreleased
 
+- **Unity assets in `refs`, `change`, `impact` and `unity missing`.** Text
+  YAML assets (prefabs, scenes, ScriptableObjects, clips, controllers, …) and
+  `.meta` GUIDs are indexed. `refs Type` lists the assets whose components use
+  the script (`m_Script` by GUID, resolved through the indexed `.meta`, so a
+  `.meta` Unity writes later is picked up) plus the prefab instances and
+  variants that carry it; `refs Member` / `change Type.Member` list the
+  UnityEvent persistent calls naming the method (`set_X` for properties)
+  whose target is that type family, animation events naming it (by name; the
+  receiver is not recorded), and assets serializing it as a field
+  (`[FormerlySerializedAs]` hint). `impact` gets an "Assets" section per
+  changed file; `change` adds "bound by the .meta GUID" and a Unity
+  not-covered line. `unity missing` lists missing scripts (GUIDs found in no
+  `.meta` of the project, `Packages/` or the package cache — ignored folders
+  count as present), UnityEvent calls to methods the target type no longer
+  has, calls whose target object is gone, and animation events naming no
+  indexed method. On Chop Chop: 764/764 script → asset links, 18/18
+  UnityEvent calls to project code, 24/24 animation-event methods, 7/7 stale
+  calls, 2/2 target-less calls, no extra links; cold index 0.4 → 2.7 s
+  (332 MB of YAML), the Unity project +3%. On the Unity B0 questions "which
+  prefabs use X" and "which assets reference missing scripts" are now one
+  call each. Index format 11.
 - **Public Unity game benchmark.** `benchmarks/bench_unity_game.py` fetches
   Chop Chop (Unity Open Project #1, Apache-2.0, pinned commit; text files
   only) and measures how much of what the assets reference — scripts used by
   prefabs/scenes/ScriptableObjects, methods called by UnityEvents and
-  animation events — `refs` shows. Today: 0 of 764 script → asset links,
-  0 of 41 UnityEvent methods, 0 of 24 animation-event methods; the baseline
-  for asset references. C# refs recall on it: classes 99.8%, methods 98.5%.
+  animation events — `refs` shows. Before asset indexing: 0 of 764 script →
+  asset links, 0 of 41 UnityEvent methods, 0 of 24 animation-event methods. C# refs recall on it: classes 99.8%, methods 98.5%.
 - **Caller check after a signature edit (C#, in `impact`).** The index keeps
   each method's parameter shape (required, optional, `params`, extension
   `this`) and remembers the shape it saw before an edit (24 h; reverting the

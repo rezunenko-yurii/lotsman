@@ -127,8 +127,8 @@ TOOLS = [
         "description": ("Before changing a symbol (signature, rename, removal): "
                         "definition, declarations it implements, overrides, and "
                         "callers file:line in files naming its type family "
-                        "(tests marked); unrelated same-name uses only counted. "
-                        "Name-based."),
+                        "(tests marked); unrelated same-name uses only counted; "
+                        "Unity assets that bind it. Name-based."),
         "inputSchema": {
             "type": "object",
             "properties": {"target": {"type": "string",
@@ -144,11 +144,13 @@ TOOLS = [
                         "targets it builds for, #if branches per platform/Editor; "
                         "with `uses`, whether that code can see another type. "
                         "target `errors`: compile errors from the Editor log, "
-                        "flagged when edits are newer than the log."),
+                        "flagged when edits are newer than the log; `missing`: "
+                        "broken asset references (missing scripts, stale "
+                        "UnityEvent calls)."),
         "inputSchema": {
             "type": "object",
             "properties": {"target": {"type": "string",
-                                      "description": "file, type, assembly or `errors`"},
+                                      "description": "file, type, assembly, `errors` or `missing`"},
                            "log": {"type": "string", "description": "Editor log path"},
                            "uses": {"type": "string",
                                     "description": "type/file/assembly to check visibility of"}},
@@ -160,8 +162,9 @@ TOOLS = [
         "description": ("Who uses a symbol: definitions plus referencing "
                         "files with line numbers (`path:12,40`). `Type.Member` "
                         "narrows to lines naming both. Name-based: flags names "
-                        "defined in several files. Use before changing a "
-                        "signature."),
+                        "defined in several files. Unity: also assets using "
+                        "the script and UnityEvent calls naming the method. Use "
+                        "before changing a signature."),
         "inputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string"},

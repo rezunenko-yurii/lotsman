@@ -163,6 +163,9 @@ def generate_impact(store: Store, changed: list[str],
                 suffix += (" " if uses else "   <- ") + f"(+{weak}x name-only)"
             lines.append(f"{s.line:5}: {s.signature}{suffix}")
 
+    if not tests_only:
+        from lotsman import unityassets
+        lines += unityassets.impact_lines(store, changed)
     if dependents:
         header = f"\nImpacted files ({len(dependents)})"
         if tests_only:

@@ -408,13 +408,17 @@ def render_unity(store, target: str, uses: str | None = None, root=None,
     assembly), its references and who references it, the targets it builds
     for and its `#if` branches per target; with USES, whether TARGET's
     assembly can see the assembly of USES. `unity errors`: compile errors of
-    the last compilation in the Editor log (`log` overrides the location)."""
+    the last compilation in the Editor log (`log` overrides the location).
+    `unity missing`: broken serialized references (unityassets)."""
     project = load(store)
     if project is None:
         return "(not a Unity project: no ProjectSettings/ at or above the indexed folder)"
     if target.strip() == "errors" and root is not None and not store.has_file("errors"):
         from lotsman import unitylog
         return unitylog.render_errors(store, root, log)
+    if target.strip() == "missing" and root is not None and not store.has_file("missing"):
+        from lotsman import unityassets
+        return unityassets.render_missing(store, root)
     hits = _locate(store, project, target)
     if not hits:
         return f"(`{target}`: no indexed file, assembly or C# symbol by that name)"

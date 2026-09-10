@@ -68,6 +68,22 @@ CREATE TABLE IF NOT EXISTS sig_changes (
     at REAL NOT NULL,
     PRIMARY KEY (path, name)
 );
+CREATE TABLE IF NOT EXISTS asset_refs (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    count INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS guids (
+    guid TEXT NOT NULL,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_asset_refs_key ON asset_refs(key);
+CREATE INDEX IF NOT EXISTS idx_asset_refs_file ON asset_refs(file_id);
+CREATE INDEX IF NOT EXISTS idx_guids_guid ON guids(guid);
+CREATE INDEX IF NOT EXISTS idx_guids_file ON guids(file_id);
 CREATE INDEX IF NOT EXISTS idx_directives_file ON directives(file_id);
 CREATE INDEX IF NOT EXISTS idx_bases_base ON bases(base_name);
 CREATE INDEX IF NOT EXISTS idx_bases_type ON bases(type_name);
@@ -91,7 +107,7 @@ DATA_KINDS = ("key",)
 UNRANKED_KINDS = MEMBER_KINDS + DOC_KINDS + DATA_KINDS
 # Files that reference code without being code: their references show in
 # refs/change/impact, but never feed the map's ranking graph.
-NON_CODE_LANGS = ("markdown", "json", "asmdef")
+NON_CODE_LANGS = ("markdown", "json", "asmdef", "unityasset", "unitymeta")
 # SQL filter on the `symbols s` alias: symbols that rank, embed and code-search.
 RANKED_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in UNRANKED_KINDS)
 
@@ -196,6 +212,8 @@ class Store:
         self.conn.execute("DELETE FROM assemblies")
         self.conn.execute("DELETE FROM directives")
         self.conn.execute("DELETE FROM sig_changes")
+        self.conn.execute("DELETE FROM asset_refs")
+        self.conn.execute("DELETE FROM guids")
         if self.has_fts:
             self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
@@ -246,12 +264,16 @@ class Store:
                     assembly: tuple[str, str, str] | None = None,
                     directives: list | None = None,
                     arities: dict[tuple[str, int], str] | None = None,
+                    asset_refs: list | None = None,
+                    guid: str | None = None,
                     ) -> None:
         """Replace a file's index data atomically (caller batches in a transaction).
         doc_text: (section name, line) -> (heading terms, body terms);
         assembly: (kind, name, JSON data) of a Unity `.asmdef`/`.asmref`;
         directives: C# `#if` branches and `#define`s (csdefines.Directive);
-        arities: (name, line) -> encoded parameter shape (callcheck.Arity)."""
+        arities: (name, line) -> encoded parameter shape (callcheck.Arity);
+        asset_refs: serialized references of a Unity asset (unityassets.AssetRef);
+        guid: the GUID a Unity `.meta` file assigns to the file next to it."""
         cur = self.conn.execute("SELECT id FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
         if row:
@@ -265,6 +287,8 @@ class Store:
             self.conn.execute("DELETE FROM bases WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM assemblies WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM directives WHERE file_id=?", (file_id,))
+            self.conn.execute("DELETE FROM asset_refs WHERE file_id=?", (file_id,))
+            self.conn.execute("DELETE FROM guids WHERE file_id=?", (file_id,))
         else:
             cur = self.conn.execute(
                 "INSERT INTO files(path, sha, mtime, size, lang) VALUES(?,?,?,?,?)",
@@ -292,6 +316,13 @@ class Store:
             self.conn.execute(
                 "INSERT INTO assemblies(file_id, kind, name, data) VALUES(?,?,?,?)",
                 (file_id, *assembly))
+        if asset_refs:
+            self.conn.executemany(
+                "INSERT INTO asset_refs(file_id, kind, key, owner, line, count) "
+                "VALUES(?,?,?,?,?,?)",
+                [(file_id, r.kind, r.key, r.owner, r.line, r.count) for r in asset_refs])
+        if guid:
+            self.conn.execute("INSERT INTO guids(guid, file_id) VALUES(?,?)", (guid, file_id))
         if doc_text and self.has_fts:
             ids = self.conn.execute(
                 "SELECT id, name, line FROM symbols WHERE file_id=? AND kind='section'",
@@ -484,6 +515,60 @@ class Store:
         since = (time.time() if now is None else now) - SIG_CHANGE_TTL
         return self.conn.execute("SELECT name, old FROM sig_changes WHERE path=? AND at >= ? "
                                  "ORDER BY name", (path, since)).fetchall()
+
+    # --- Unity serialized assets (unityassets) ----------------------------
+
+    def asset_rows(self, kinds: tuple[str, ...], keys: list[str]
+                   ) -> list[tuple[str, str, str, str, int, int]]:
+        """(asset path, kind, key, owner, line, count) for the given keys."""
+        if not keys:
+            return []
+        out = []
+        for i in range(0, len(keys), 500):
+            chunk = keys[i:i + 500]
+            out += self.conn.execute(
+                "SELECT f.path, a.kind, a.key, a.owner, a.line, a.count FROM asset_refs a "
+                "JOIN files f ON f.id = a.file_id "
+                f"WHERE a.key IN ({','.join('?' * len(chunk))}) "
+                f"AND a.kind IN ({','.join('?' * len(kinds))}) ORDER BY f.path, a.line",
+                (*chunk, *kinds)).fetchall()
+        return out
+
+    def asset_rows_in(self, paths: list[str], kind: str) -> list[tuple[str, str, str]]:
+        """(asset path, key, owner) of one kind in the given files."""
+        out = []
+        for i in range(0, len(paths), 500):
+            chunk = paths[i:i + 500]
+            out += self.conn.execute(
+                "SELECT f.path, a.key, a.owner FROM asset_refs a JOIN files f ON f.id = a.file_id "
+                f"WHERE f.path IN ({','.join('?' * len(chunk))}) AND a.kind = ?",
+                (*chunk, kind)).fetchall()
+        return out
+
+    def guid_of(self, path: str) -> str | None:
+        """GUID from the `.meta` next to `path`, if indexed."""
+        row = self.conn.execute(
+            "SELECT g.guid FROM guids g JOIN files f ON f.id = g.file_id WHERE f.path = ?",
+            (path + ".meta",)).fetchone()
+        return row[0] if row else None
+
+    def guid_paths(self, guids: list[str]) -> dict[str, str]:
+        """GUID -> path of the file its `.meta` belongs to."""
+        out: dict[str, str] = {}
+        for i in range(0, len(guids), 500):
+            chunk = guids[i:i + 500]
+            for guid, meta in self.conn.execute(
+                    "SELECT g.guid, f.path FROM guids g JOIN files f ON f.id = g.file_id "
+                    f"WHERE g.guid IN ({','.join('?' * len(chunk))})", chunk):
+                out[guid] = meta[:-5]
+        return out
+
+    def asset_ref_keys(self, kind: str) -> list[tuple[str, str, str, int, int]]:
+        """(key, owner, asset path, line, count) of every row of one kind."""
+        return self.conn.execute(
+            "SELECT a.key, a.owner, f.path, a.line, a.count FROM asset_refs a "
+            "JOIN files f ON f.id = a.file_id WHERE a.kind = ? ORDER BY f.path, a.line",
+            (kind,)).fetchall()
 
     def has_file(self, path: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None

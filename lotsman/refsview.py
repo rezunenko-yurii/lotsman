@@ -108,8 +108,9 @@ def render_refs(store: Store, name: str, limit: int = 20) -> str:
         lines.append(f"note: {result.def_files} files define `{parts[-1]}` — "
                      f"references below match the name and may belong to "
                      f"any of them{hint}")
+    asset_lines = _asset_lines(store, parts, defs)
     if not result.refs:
-        return "\n".join(lines)
+        return "\n".join(lines + asset_lines)
 
     code = [s for s in result.refs if not is_data_path(s.path)]
     data = [s for s in result.refs if is_data_path(s.path)]
@@ -146,4 +147,22 @@ def render_refs(store: Store, name: str, limit: int = 20) -> str:
     hidden = len(result.refs) - shown
     if hidden > 0:
         lines.append(f"  … {hidden} more files (raise the limit to list them)")
-    return "\n".join(lines)
+    return "\n".join(lines + asset_lines)
+
+
+def asset_uses(store: Store, parts: list[str], defs: list[SymbolRow]):
+    """Unity projects: serialized assets using the definition (unityassets);
+    None elsewhere."""
+    from lotsman import unity, unityassets
+    if not defs or store.get_meta(unity.META_UNITY_ASSETS) is None:
+        return None
+    owners = unityassets.owners_for(store, defs)
+    if len(parts) >= 2 and owners is None:
+        owners = {parts[-2]}
+    return unityassets.collect_uses(store, parts[-1], defs, owners)
+
+
+def _asset_lines(store: Store, parts: list[str], defs: list[SymbolRow]) -> list[str]:
+    from lotsman import unityassets
+    uses = asset_uses(store, parts, defs)
+    return unityassets.render_uses(uses) if uses else []

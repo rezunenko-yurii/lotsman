@@ -8,6 +8,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from lotsman import unityassets
+
 LANG_BY_EXT = {
     ".py": "python",
     ".pyi": "python",
@@ -150,6 +152,11 @@ def scan(root: Path) -> list[FileRecord]:
         if ignore and is_ignored(rel, ignore):
             continue
         lang = LANG_BY_EXT.get(Path(rel).suffix.lower())
+        limit = MAX_FILE_SIZE
+        if lang is None and unity:
+            lang = unityassets.lang_for(rel)
+            if lang == unityassets.ASSET_LANG:
+                limit = unityassets.MAX_ASSET_BYTES
         if lang is None:
             continue
         full = root / rel
@@ -157,7 +164,7 @@ def scan(root: Path) -> list[FileRecord]:
             st = full.stat()
         except OSError:
             continue
-        if st.st_size > MAX_FILE_SIZE or st.st_size == 0:
+        if st.st_size > limit or st.st_size == 0:
             continue
         records.append(FileRecord(path=rel, lang=lang, size=st.st_size, mtime=st.st_mtime))
     return records

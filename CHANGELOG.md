@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Unity assemblies.** `.asmdef`/`.asmref` files are indexed (GUIDs from the
+  `.meta` next to them). `lotsman unity FILE|Type|Assembly` (CLI and MCP tool)
+  names the assembly that compiles the code — nearest asmdef, or Unity's
+  predefined `Assembly-CSharp`/`-firstpass`/`-Editor` rules — its references
+  with `asmdef:line` (GUID references resolved), who references it directly
+  (references are not transitive) and which predefined assemblies see it.
+  `unity FILE USES` answers "does this compile if I use USES here?" and says
+  which asmdef line to edit. `outline` of a C# file gets an `assembly:` line;
+  `change` marks callers whose assembly cannot see the definition's. On a
+  Unity project (24 asmdefs) file → assembly matches Unity's generated
+  `.csproj` for 1297/1297 files and the reference graph for 27/27 assemblies
+  (`benchmarks/check_unity_csproj.py`). Index format 8.
 - **JSON configs reference code.** `.json` (and `.rc` files that contain
   JSON) are indexed: `"$type": "Ns.Type"`, keys named after members
   (`"p_Checker"` → `Checker`, `f_`/`t_` prefixes, `-------LOCKED-------`

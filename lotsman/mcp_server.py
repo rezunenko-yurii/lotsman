@@ -138,6 +138,20 @@ TOOLS = [
         },
     },
     {
+        "name": "unity",
+        "description": ("Unity project facts: the assembly (asmdef) compiling a "
+                        "file or type, its references and who references it; "
+                        "with `uses`, whether that code can see another type."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"target": {"type": "string",
+                                      "description": "file, type or assembly name"},
+                           "uses": {"type": "string",
+                                    "description": "type/file/assembly to check visibility of"}},
+            "required": ["target"],
+        },
+    },
+    {
         "name": "refs",
         "description": ("Who uses a symbol: definitions plus referencing "
                         "files with line numbers (`path:12,40`). `Type.Member` "
@@ -231,6 +245,10 @@ class McpServer:
         return changeview.render_change(self.store, args["target"],
                                         int(args.get("limit") or 25))
 
+    def _tool_unity(self, args: dict) -> str:
+        from lotsman import unity
+        return unity.render_unity(self.store, args["target"], args.get("uses"))
+
     def _tool_refs(self, args: dict) -> str:
         return refsview.render_refs(
             self.store, args["name"], int(args.get("limit") or 20))
@@ -270,6 +288,7 @@ class McpServer:
             "slice": self._tool_slice,
             "refs": self._tool_refs,
             "change": self._tool_change,
+            "unity": self._tool_unity,
             "impact": self._tool_impact,
         }.get(name)
         if fn is None:

@@ -32,7 +32,7 @@ class TestMcpDispatch(FixtureRepoMixin, unittest.TestCase):
         tools = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {t["name"] for t in tools["result"]["tools"]}
         self.assertEqual(names, {"map", "search", "outline", "defs", "refs",
-                                 "impact", "slice", "change"})
+                                 "impact", "slice", "change", "unity"})
 
         call = server.handle({
             "jsonrpc": "2.0", "id": 3, "method": "tools/call",
@@ -147,7 +147,7 @@ class TestToolSchemas(unittest.TestCase):
             "map": [], "impact": [],
             "search": ["query"], "outline": ["file"],
             "defs": ["name"], "refs": ["name"],
-            "slice": ["file", "name"], "change": ["target"],
+            "slice": ["file", "name"], "change": ["target"], "unity": ["target"],
         })
 
 

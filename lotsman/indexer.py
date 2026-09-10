@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import docs, extract, jsonrefs, scanner, wiring
+from lotsman import docs, extract, jsonrefs, scanner, unity, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -19,7 +19,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "7"
+INDEX_VERSION = "8"
 
 
 @dataclass
@@ -101,6 +101,8 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
     store.set_meta("wiring_sha", wiring_sha)
     store.set_meta("grammar_fingerprint", fingerprint)
     store.set_meta("degraded", json.dumps(result.degraded, ensure_ascii=False))
+    if scanner.is_unity_project(root):
+        store.set_meta(unity.META_UNITY_ASSETS, "" if root.name == "Assets" else "Assets/")
     known = store.known_files()
     seen_paths = set()
     docs_changed = False
@@ -128,8 +130,19 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
             continue
         doc_text = None
         bases: list = []
+        assembly = None
         try:
-            if rec.lang == "markdown":
+            if rec.lang == unity.ASMDEF_LANG:
+                # Assembly definitions: facts for `unity`/outline, no symbols.
+                # The GUID other asmdefs reference it by lives in the `.meta`.
+                symbols, idents, lines = [], Counter(), {}
+                meta = root / (rec.path + ".meta")
+                info = unity.parse_asmdef(data, meta.read_bytes() if meta.is_file() else None)
+                if info is not None:
+                    kind = "asmref" if rec.path.endswith(".asmref") else "asmdef"
+                    name = str(info["json"].get("name" if kind == "asmdef" else "reference") or "")
+                    assembly = (kind, name, json.dumps(info, ensure_ascii=False))
+            elif rec.lang == "markdown":
                 # Prose has long lines by nature: no generated-file check. Docs
                 # add sections, never references (refs stay about code).
                 sections = docs.parse_sections(data, rec.path)
@@ -164,7 +177,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines, doc_text, bases)
+            idents, lines, doc_text, bases, assembly)
         if prev is None:
             result.added += 1
         else:

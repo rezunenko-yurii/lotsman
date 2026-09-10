@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from lotsman import unity
 from lotsman.refsview import RefSite, _site_line, is_data_path
 from lotsman.store import TYPE_KINDS, Store, SymbolRow, enclosing_types
 from lotsman.textutil import is_test_path
@@ -180,6 +181,22 @@ def _owners_of(store: Store, row: SymbolRow) -> set[str]:
     return owners.get(row.name, set())
 
 
+def _blind_callers(store: Store, rep: ChangeReport) -> dict[str, str]:
+    """Unity: caller files whose assembly cannot see the definition's
+    assembly — a same-name symbol of another type, or code that does not
+    compile. path -> suffix."""
+    project = unity.load(store)
+    home = project.assembly_for(rep.defs[0].path) if project and rep.defs else None
+    if home is None:
+        return {}
+    out = {}
+    for site in rep.callers:
+        user = project.assembly_for(site.path)
+        if user and project.can_see(user[0], home[0]) is False:
+            out[site.path] = f"  [{user[0].name} cannot see {home[0].name}]"
+    return out
+
+
 def render_change(store: Store, target: str, limit: int = CALLERS_SHOWN) -> str:
     rep = collect_change(store, target)
     if rep is None:
@@ -212,8 +229,10 @@ def render_change(store: Store, target: str, limit: int = CALLERS_SHOWN) -> str:
                  " in files naming the type family, type on the line first")
         lines.append(f"callers — {len(rep.callers)} files ({tests} tests), "
                      f"{total_lines} lines{where}:")
+        blind = _blind_callers(store, rep)
         for site in rep.callers[:limit]:
-            lines.append(_site_line(site) + ("  [test]" if is_test_path(site.path) else ""))
+            lines.append(_site_line(site) + ("  [test]" if is_test_path(site.path) else "")
+                         + blind.get(site.path, ""))
         if len(rep.callers) > limit:
             lines.append(f"  … {len(rep.callers) - limit} more files (raise the limit)")
     else:

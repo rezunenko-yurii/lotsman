@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-from lotsman import docs
+from lotsman import docs, unity
 from lotsman.store import Store, SymbolRow
 
 
 def outline_header(store: Store, path: str, rows: list[SymbolRow]) -> list[str]:
     """Context lines above an outline: for a doc, whether it is binding; for
-    code, the nearest module docs (one line)."""
+    code, the Unity assembly compiling it and the nearest module docs (one
+    line each)."""
     if path.endswith((".md", ".markdown")):
         if path in store.binding_docs():
             return ["  binding: an AGENTS.md requires reading this document in full"]
         return []
+    out = []
+    project = unity.load(store) if path.endswith(".cs") else None
+    asm = unity.assembly_line(project, path) if project else None
+    if asm:
+        out.append(f"  {asm}")
     line = docs.docs_for(path, store.doc_paths() - {path})
-    return [f"  {line}"] if line else []
+    return out + ([f"  {line}"] if line else [])
 
 
 # Member kinds whose consecutive runs collapse into one names-only line.

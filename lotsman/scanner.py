@@ -39,6 +39,8 @@ LANG_BY_EXT = {
     ".markdown": "markdown",
     ".json": "json",
     ".rc": "json",   # remote-config JSON in Unity projects; content-sniffed
+    ".asmdef": "asmdef",  # Unity assembly definitions (lotsman.unity)
+    ".asmref": "asmdef",
 }
 
 SKIP_DIRS = frozenset({

@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS bases (
     base_name TEXT NOT NULL,
     line INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS assemblies (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    data TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_bases_base ON bases(base_name);
 CREATE INDEX IF NOT EXISTS idx_bases_type ON bases(type_name);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
@@ -69,7 +75,7 @@ DATA_KINDS = ("key",)
 UNRANKED_KINDS = MEMBER_KINDS + DOC_KINDS + DATA_KINDS
 # Files that reference code without being code: their references show in
 # refs/change/impact, but never feed the map's ranking graph.
-NON_CODE_LANGS = ("markdown", "json")
+NON_CODE_LANGS = ("markdown", "json", "asmdef")
 # SQL filter on the `symbols s` alias: symbols that rank, embed and code-search.
 RANKED_SQL = "s.kind NOT IN (%s)" % ", ".join(f"'{k}'" for k in UNRANKED_KINDS)
 
@@ -165,6 +171,7 @@ class Store:
         """Drop all indexed data (schema kept); used on index-version bumps."""
         self.conn.execute("DELETE FROM idents")
         self.conn.execute("DELETE FROM bases")
+        self.conn.execute("DELETE FROM assemblies")
         if self.has_fts:
             self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
@@ -212,9 +219,11 @@ class Store:
                     ident_lines: dict[str, list[int]] | None = None,
                     doc_text: dict[tuple[str, int], tuple[str, str]] | None = None,
                     bases: list[tuple[str, str, int]] | None = None,
+                    assembly: tuple[str, str, str] | None = None,
                     ) -> None:
         """Replace a file's index data atomically (caller batches in a transaction).
-        doc_text: (section name, line) -> (heading terms, body terms)."""
+        doc_text: (section name, line) -> (heading terms, body terms);
+        assembly: (kind, name, JSON data) of a Unity `.asmdef`/`.asmref`."""
         cur = self.conn.execute("SELECT id FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
         if row:
@@ -226,6 +235,7 @@ class Store:
             self.conn.execute("DELETE FROM symbols WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM idents WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM bases WHERE file_id=?", (file_id,))
+            self.conn.execute("DELETE FROM assemblies WHERE file_id=?", (file_id,))
         else:
             cur = self.conn.execute(
                 "INSERT INTO files(path, sha, mtime, size, lang) VALUES(?,?,?,?,?)",
@@ -244,6 +254,10 @@ class Store:
             self.conn.executemany(
                 "INSERT INTO bases(file_id, type_name, base_name, line) VALUES(?,?,?,?)",
                 [(file_id, t, b, ln) for t, b, ln in bases])
+        if assembly:
+            self.conn.execute(
+                "INSERT INTO assemblies(file_id, kind, name, data) VALUES(?,?,?,?)",
+                (file_id, *assembly))
         if doc_text and self.has_fts:
             ids = self.conn.execute(
                 "SELECT id, name, line FROM symbols WHERE file_id=? AND kind='section'",
@@ -391,6 +405,15 @@ class Store:
         return self.conn.execute(
             f"SELECT type_name, base_name FROM bases WHERE type_name IN ({ph})",
             list(names)).fetchall()
+
+    def has_file(self, path: str) -> bool:
+        return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None
+
+    def assembly_rows(self) -> list[tuple[str, str, str, str]]:
+        """(path, kind, name, data) of every indexed `.asmdef`/`.asmref`."""
+        return self.conn.execute(
+            "SELECT f.path, a.kind, a.name, a.data FROM assemblies a "
+            "JOIN files f ON f.id = a.file_id").fetchall()
 
     def binding_docs(self) -> set[str]:
         return set(json.loads(self.get_meta("binding_docs") or "[]"))

@@ -80,6 +80,7 @@ the `lotsman` command is not installed, use `python3 -m lotsman`.
 | One symbol matters | `slice FILE NAME` instead of reading the whole file |
 | Symbol/API change | `change Type.Member` (overrides + family callers); `refs Class.Method` for plain usages |
 | File or batch change | `impact` before and after editing |
+| Unity: which assembly, will a new dependency compile | `unity FILE [USES]` |
 | Need test candidates | `impact --tests` / MCP impact with `tests: true` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `report` |
 | Need broader context | Increase map budget only with mention/focus |
@@ -122,6 +123,7 @@ checkout, use that command prefix instead.
 | One symbol matters | `lotsman slice <file> <name>` instead of reading the whole file |
 | Symbol/API change | `lotsman change Type.Member` (overrides + family callers); `lotsman refs Class.Method` for plain usages |
 | File or batch change | `lotsman impact <files>` before and after editing |
+| Unity: which assembly, will a new dependency compile | `lotsman unity <file> [<Type>]` |
 | Need test candidates | `lotsman impact <files> --tests` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `lotsman report` |
 | Need broader context | Increase map budget only with `--mention` or `--focus` |

@@ -5,7 +5,8 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-10 (later session): A1 done and committed too; **next: P1,
+then U0** (design notes under U0). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -46,9 +47,14 @@ Where things are:
   word `tree` (even inside Python code) — put such code in a scratch `.py` file
   or use Edit; zsh does not word-split `$var` (use arrays or Python drivers);
   Rider MCP is connected but `analyze_calls` resolved no C# methods.
-- Budgets that still apply: MCP tools now 8 / ~990 tokens (+16% of +40%; one
-  more new tool allowed — `unity` for U0); `refs`/`outline` ≤ 0.3 s (now
-  ~0.17 s); cold index ≤ 2× 1.6 (now 3.6 s vs 2.5 s).
+- Budgets that still apply: MCP tools now 9 / ~1,100 tokens (json chars/4;
+  `unity` added in A1 — no more new tools; U0 extends `unity`);
+  `refs`/`outline`/`unity` ≤ 0.3 s (now ~0.17 s); cold index ≤ 2× 1.6 (now
+  3.9 s vs 2.5 s).
+- Shell gotcha: `cd` outside the worktree resets the session cwd to the main
+  checkout — prefix commands with `cd <worktree> &&` or use absolute paths.
+- The user's Editor.log (`~/Library/Logs/Unity/Editor.log`) contains a Hub
+  access token in its command-line block: never print log headers.
 
 ## Goal
 
@@ -283,12 +289,38 @@ B0 (`b0_j1_2026-09-10.json`): **data 54,199 → 3,966 tokens (−93%; data-02
 45k → 93)**, change 3,164 (JSON now in `change`, no grep fallback);
 **all 28 questions 132,287 → 48,870 (−63%)**.
 
-**A1. Assemblies (`.asmdef`).** Map file → assembly (nearest asmdef up the
+**A1. Assemblies (`.asmdef`).** ✅ Map file → assembly (nearest asmdef up the
 tree), assembly references (names and `GUID:` via `.asmdef.meta`), platforms,
 `defineConstraints`. Surfaces: one header line in `outline`; `change`/`impact`
 flag callers in assemblies that cannot see the owner; a facts command (U0).
 - Done when: file→assembly and reference graph match Unity's `.csproj`
   files in the project root for all 25 compiled asmdefs.
+
+Status 2026-09-10 — implemented (`lotsman/unity.py`, INDEX_VERSION 8):
+`.asmdef`/`.asmref` scanned as lang `asmdef`; table `assemblies` (kind, name,
+JSON with key lines, per-reference lines, GUID from `.meta` — a `.meta`-only
+GUID change is not detected until the asmdef changes); meta key
+`unity_assets` set when the repo is a Unity project or its `Assets/`.
+Model: nearest asmdef/asmref folder, else predefined (`Plugins/`,
+`Standard Assets/` → firstpass; `Editor` folder → `-Editor`); references by
+name/GUID (unresolved GUIDs = outside the index, e.g. `.lotsmanignore`d
+vendors); predefined assemblies see every autoReferenced asmdef — Editor-only
+ones too, but only in the Editor compile (verdict says player builds fail).
+Surfaces: `lotsman unity TARGET [USES]` + MCP tool `unity` (file / type /
+assembly; USES → visible or not + the asmdef line to edit); `outline` of `.cs`
+prints `assembly: …`; `change` marks callers `[X cannot see Y]`. `impact` not
+touched. Agent skill tables route Unity questions to `unity`.
+
+Measured: **done criterion met** — `benchmarks/check_unity_csproj.py` on
+SDK-Kitchen: 24 asmdefs in the index (plan said 25), file → assembly
+1297/1297 match the generated `.csproj`, references 27/27 assemblies (24
+asmdefs + 3 non-empty predefined; the empty Editor-firstpass csproj and the
+stale `ExLog.Tests.Editor.csproj` are skipped). B0 (`b0_a1_2026-09-10.json`):
+assembly 4,668 tokens / 17 calls → 4,711 / 10 (asm-01, asm-02: one `unity`
+call each, found 1.0; asm-03/04 wait for P1); all 28: 48,913 tokens.
+`outline`/`refs`/`unity` 0.17 s; cold index 3.9 s; `bench_unity.py` gates
+pass; the five corpus benches not rerun (no `.asmdef` there — the change
+cannot reach them).
 
 **P1. `#if` and define symbols.** Parse `#if/#elif/#else` regions; outline
 marks symbols under a condition (`[#if UNITY_IOS]`); per-platform defines from
@@ -303,6 +335,48 @@ Editor.log** (`error CS…` → `file:line`, with `staleLog` / `errorsPredateEdi
 flags; idea from Unity Open MCP).
 - Done when: errors parsed on real logs from Unity 2022/6000; staleness flags
   tested.
+
+Design notes for P1 + U0 (worked out 2026-09-10, not implemented):
+- `#if` regions: line-based scan of `#if/#elif/#else/#endif` (C# directives
+  are whole lines; tree-sitter shows them as `preproc_if/elif/else` but breaks
+  on unbalanced branches). Store per C# file the regions with the *effective*
+  condition of each branch (`#else` → `!(A)`, `#elif B` → `!(A) && (B)`,
+  nesting ANDed) in a new table; outline appends `[#if X]` to symbols inside;
+  `unity FILE` lists regions grouped by condition with `#if` lines (asm-03
+  expects lines 148…244 of IosWebView.cs) and a verdict per target.
+- Evaluation: tiny parser for `! && || == != ( ) true false`, three-valued
+  (unknown symbols → unknown, `UNITY_IOS && !UNITY_EDITOR` in the Editor is
+  false regardless). Targets: Editor + player groups from ProjectSettings
+  `scriptingDefineSymbols` (names like `Android:`/`iPhone:`/`Standalone:`;
+  Unity ≤ 2019 used BuildTargetGroup numbers 1 Standalone, 4 iPhone,
+  7 Android, 13 WebGL), built-ins (`UNITY_EDITOR`, `UNITY_IOS`/`UNITY_IPHONE`,
+  `UNITY_ANDROID`, `UNITY_STANDALONE*`, `UNITY_WEBGL`, version
+  `UNITY_6000_3_OR_NEWER` from ProjectVersion.txt), `csc.rsp` (`-define:`,
+  Assets root = all assemblies, next to an asmdef = that one), asmdef
+  `versionDefines` against Packages/manifest.json, `defineConstraints` gate
+  the whole assembly. Active Editor target: the generated
+  `Assembly-CSharp.csproj` `DefineConstants` (SDK-Kitchen: UNITY_IOS).
+  asm-04 needs "UNITYWEBVIEW_ANDROID_ENABLE_CAMERA defined nowhere" with the
+  evidence `ProjectSettings/ProjectSettings.asset:820` in the output.
+- Files outside the indexed root print as `../ProjectSettings/…`; the harness
+  must map a leading `../` to project-relative (today `rel()` strips it and
+  prefixes `Assets/`).
+- Errors: `path(line,col): error|warning CODE: msg` (same in 2019–6000);
+  keep only the last compilation (segment at `[ScriptCompilation] Requested
+  script compilation`, `Starting: …ScriptCompilationBuildProgram`, or 2019's
+  `- Starting script compilation`); dedupe; warnings counted apart. Log
+  candidates: `--log PATH`, `<project>/Logs/Editor.log`, then the OS default
+  (macOS `~/Library/Logs/Unity/Editor.log`, Linux
+  `~/.config/unity3d/Editor.log`, Windows `%LOCALAPPDATA%/Unity/Editor/Editor.log`);
+  pick the one whose `-projectpath` matches, else say it belongs to another
+  project. Staleness: source files (.cs/.asmdef) newer than the log's mtime
+  → "errors may predate these edits; recompile"; errors in files edited after
+  the log are marked. No per-line timestamps exist in 6000.3 logs. The real
+  logs here have no `error CS`: the fixture is a real 6000.3 log with injected
+  errors; a 2022 sample must be synthetic (say so).
+- err-02 scoring: `value` without evidence needs 2 `stat`s today — add an
+  `accept_output` regex to the question (e.g. `predate`) so a lotsman
+  staleness line counts.
 
 **U1. Serialized assets → `refs`.** `.meta` GUID → script; `m_Script` in
 prefabs/scenes/ScriptableObjects; UnityEvent persistent calls

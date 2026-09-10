@@ -244,6 +244,16 @@ def cmd_change(args) -> int:
     return 1 if out.startswith("(") else 0
 
 
+def cmd_unity(args) -> int:
+    from lotsman import unity
+    root = _root(args)
+    store = _open(root)
+    out = unity.render_unity(store, args.target, args.uses)
+    store.close()
+    print(out)
+    return 1 if out.startswith("(") else 0
+
+
 def cmd_impact(args) -> int:
     from lotsman import impact
     root = _root(args)
@@ -391,6 +401,14 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_change)
 
+    sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
+                                      "compiling a file/type, its references, who "
+                                      "references it")
+    sp.add_argument("target", help="file path, type/symbol name or assembly name")
+    sp.add_argument("uses", nargs="?", help="type, file or assembly the target's "
+                                            "code wants to use: is it visible?")
+    sp.set_defaults(fn=cmd_unity)
+
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
 
@@ -417,7 +435,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.set_defaults(fn=cmd_impact)
 
     sp = sub.add_parser("mcp", help="run MCP stdio server (tools: map, search, "
-                                    "outline, defs, refs, impact)")
+                                    "outline, slice, defs, refs, change, "
+                                    "unity, impact)")
     sp.set_defaults(fn=cmd_mcp)
 
     args = p.parse_args(argv)
@@ -430,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
 
 # Read commands whose use is worth measuring (`lotsman report`).
 LOGGED_COMMANDS = frozenset({"map", "search", "outline", "slice", "defs",
-                             "refs", "impact", "change"})
+                             "refs", "impact", "change", "unity"})
 
 
 def _run_logged(args, root: Path) -> int:

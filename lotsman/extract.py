@@ -223,6 +223,8 @@ REF_QUERIES: dict[str, str] = {
         (file_scoped_namespace_declaration name: (_) @decl.span)
         (using_directive name: (identifier) @decl)
         (using_directive) @decl.using
+
+        (base_list (_) @base)
     """,
 }
 REF_QUERIES["tsx"] = REF_QUERIES["typescript"]
@@ -483,18 +485,63 @@ def _excluded_ranges(captures, source: bytes) -> tuple[set[int], list[tuple[int,
 def extract_refs_with_lines(lang: str, source: bytes
                             ) -> tuple[Counter, dict[str, list[int]]]:
     """(name -> use-site count, name -> sorted distinct 1-based lines)."""
+    counts, lines, _ = extract_refs_full(lang, source)
+    return counts, lines
+
+
+# Declarations whose `base_list` names their supertypes (C#).
+_TYPE_DECLS = frozenset({"class_declaration", "struct_declaration",
+                         "interface_declaration", "record_declaration"})
+
+
+def _base_name(node, source: bytes) -> str | None:
+    """`B` for `B`, `B<C>`, `Ns.B`, `B(x)` (record primary constructor base)."""
+    while node is not None and node.type in ("generic_name", "qualified_name",
+                                             "primary_constructor_base_type"):
+        if node.type == "generic_name":
+            node = next((c for c in node.children if c.type == "identifier"), None)
+        elif node.type == "qualified_name":
+            node = node.child_by_field_name("name")
+        else:
+            node = node.child_by_field_name("type")
+    if node is None or node.type != "identifier":
+        return None
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _bases(captures, source: bytes) -> list[tuple[str, str, int]]:
+    """(type, direct supertype, line) from `class A : B, IC` declarations."""
+    out = []
+    for node in captures.get("base", ()):
+        decl = node.parent.parent if node.parent is not None else None
+        if decl is None or decl.type not in _TYPE_DECLS:
+            continue
+        name_node = decl.child_by_field_name("name")
+        base = _base_name(node, source)
+        if name_node is None or not base:
+            continue
+        name = source[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
+        out.append((name, base, node.start_point[0] + 1))
+    return out
+
+
+def extract_refs_full(lang: str, source: bytes
+                      ) -> tuple[Counter, dict[str, list[int]], list[tuple[str, str, int]]]:
+    """Use-site counts and lines, plus (type, supertype, line) inheritance
+    edges where the language query provides them (C#)."""
     pq = _compile(lang, "ref")
     if pq is None:
-        return extract_idents_with_lines(source)
+        return (*extract_idents_with_lines(source), [])
     parser, query = pq
     try:
-        tree = parser.parse(source)
-        captures = _run_captures(query, tree.root_node)
+        parsed = parser.parse(source)
+        captures = _run_captures(query, parsed.root_node)
     except Exception:
-        return extract_idents_with_lines(source)
+        return (*extract_idents_with_lines(source), [])
     skip_starts, skip_spans = _excluded_ranges(captures, source)
     order = [c for c in _REF_CAPTURE_ORDER if c in captures]
-    order += [c for c in captures if c not in order and not c.startswith("decl")]
+    order += [c for c in captures if c not in order
+              and not c.startswith("decl") and c != "base"]
     counts: Counter = Counter()
     lines: dict[str, set[int]] = {}
     seen: set[int] = set()
@@ -521,7 +568,7 @@ def extract_refs_with_lines(lang: str, source: bytes
             for n in names:
                 counts[n] += 1
                 lines.setdefault(n, set()).add(line)
-    return _cap(counts, lines)
+    return (*_cap(counts, lines), _bases(captures, source))
 
 
 def _cap(counts: Counter, lines: dict[str, set[int]]

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`lotsman change TARGET`** (CLI and MCP tool) — before changing a symbol,
+  one capped report: its definition, declarations it implements in
+  supertypes, overrides/implementations in subtypes (test doubles included),
+  and callers `file:line` in files that name its type family, tests marked.
+  Same-name uses on unrelated types are counted, not listed; extension
+  methods are not gated; `--json` for tools. Works on `Type.Member`, `Member`
+  (owner inferred when unique) and `Type`. On a Unity project's change
+  questions: 18% of the grep path's tokens, 0–2 unrelated files where
+  `refs` + `impact` showed 29–44. C# inheritance comes from `base_list`
+  (generic, qualified and record bases); index format 6.
 - **Markdown docs are indexed.** Headings become sections: `outline file.md`
   shows the heading tree with line ranges, and `search` adds a `docs:` block
   after the code hits — the section's own range plus a one-line snippet, so an

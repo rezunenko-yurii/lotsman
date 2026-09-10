@@ -184,6 +184,28 @@ references (J1/U1 once they land); assembly visibility (A1); "Rider
   files (ground truth: Rider find-usages where available, else manual), is
   smaller than `refs` + `impact` combined, and costs ≤ 30% of the baseline.
 
+Status 2026-09-10 — implemented (`lotsman/changeview.py`, CLI `change
+TARGET [-k N] [--json]`, MCP tool `change`): C# inheritance edges from
+`base_list` (generic, qualified, record bases) stored in table `bases`
+(INDEX_VERSION 6); type family = target type + transitive supertypes +
+transitive subtypes; report = definition (narrowed to the owner type),
+"declared by supertypes", overrides/implementations in subtypes, callers
+`file:line` only in files naming the family (type on the line first), tests
+marked, other same-name uses counted as `name-only`; extension methods are not
+gated; one `not covered` line (JSON/asset configs, reflection by string).
+Assembly visibility waits for A1, Rider hint dropped (the output says
+name-based; keep tokens). MCP tools: 8, tool text +16% vs 1.6 (budget 40%).
+
+Measured (B0 change, `lotsman17` = `change` → grep JSON/strings only if
+something is still missing): **3,936 tokens vs 21,866 baseline (18%, met) and
+9,515 for 1.6 `refs`+`impact`**; found 0.98 (met; the miss is a member name
+inside a C# string literal); noise 0–2 files vs 29–44 with `impact`; the
+report alone is 230–380 tokens where no JSON is involved (met: smaller than
+`refs`+`impact`). `change` runs 0.16–0.21 s on SDK-Kitchen.
+Whole B0 after C1 (`b0_c1_2026-09-10.json`): **93,302 tokens vs 132,287
+baseline (−29%)**; all corpus gates pass, Unity refs recall unchanged.
+Generated agent policy/skills now route signature changes to `change`.
+
 ### Tier 2 — project data and facts
 
 **J1. JSON configs → `refs`.** Index JSON: `$type`/type-name strings resolve

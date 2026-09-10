@@ -312,6 +312,7 @@ the agent should only see the next useful piece.
 | `outline file.py` | Symbols and line ranges in one file; for code, one line naming the module docs; for `.md`, the heading tree | File contents | You want to choose a line range |
 | `defs NAME` | Definitions of a symbol name | Usage sites | You need declarations |
 | `refs NAME` | Name-based usage candidates as `path:line,line` | Type-resolved proof | You need places to inspect |
+| `change Type.Member` | Definition, overrides/implementations, callers `file:line` in the type family, tests marked | A compiler's verdict | You are about to change a signature, rename or remove a member |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
 
 Map budget is output budget, not index depth. `map --budget 5000` gives the
@@ -521,6 +522,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman slice FILE TARGET` | return one symbol body plus its local skeleton (enclosing types, nearest siblings) |
 | `lotsman defs NAME` | show definitions of a symbol |
 | `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups |
+| `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |

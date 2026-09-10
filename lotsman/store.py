@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS rank_cache (
     ident TEXT NOT NULL,
     rank REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS bases (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    type_name TEXT NOT NULL,
+    base_name TEXT NOT NULL,
+    line INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bases_base ON bases(base_name);
+CREATE INDEX IF NOT EXISTS idx_bases_type ON bases(type_name);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_idents_name ON idents(name);
@@ -151,6 +159,7 @@ class Store:
     def wipe(self) -> None:
         """Drop all indexed data (schema kept); used on index-version bumps."""
         self.conn.execute("DELETE FROM idents")
+        self.conn.execute("DELETE FROM bases")
         if self.has_fts:
             self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
@@ -197,6 +206,7 @@ class Store:
                     idents: Counter,
                     ident_lines: dict[str, list[int]] | None = None,
                     doc_text: dict[tuple[str, int], tuple[str, str]] | None = None,
+                    bases: list[tuple[str, str, int]] | None = None,
                     ) -> None:
         """Replace a file's index data atomically (caller batches in a transaction).
         doc_text: (section name, line) -> (heading terms, body terms)."""
@@ -210,6 +220,7 @@ class Store:
             self._delete_doc_text([file_id])
             self.conn.execute("DELETE FROM symbols WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM idents WHERE file_id=?", (file_id,))
+            self.conn.execute("DELETE FROM bases WHERE file_id=?", (file_id,))
         else:
             cur = self.conn.execute(
                 "INSERT INTO files(path, sha, mtime, size, lang) VALUES(?,?,?,?,?)",
@@ -224,6 +235,10 @@ class Store:
             "INSERT INTO idents(file_id, name, count, lines) VALUES(?,?,?,?)",
             [(file_id, n, c, _encode_lines(ident_lines.get(n)))
              for n, c in idents.items()])
+        if bases:
+            self.conn.executemany(
+                "INSERT INTO bases(file_id, type_name, base_name, line) VALUES(?,?,?,?)",
+                [(file_id, t, b, ln) for t, b, ln in bases])
         if doc_text and self.has_fts:
             ids = self.conn.execute(
                 "SELECT id, name, line FROM symbols WHERE file_id=? AND kind='section'",
@@ -350,6 +365,25 @@ class Store:
                 (match, limit)).fetchall()
         except sqlite3.OperationalError:
             return []
+
+    def subtypes(self, names: set[str]) -> list[tuple[str, str, str, int]]:
+        """(type, direct supertype, path, line) for types deriving from names."""
+        if not names:
+            return []
+        ph = ",".join("?" for _ in names)
+        return self.conn.execute(
+            "SELECT b.type_name, b.base_name, f.path, b.line FROM bases b "
+            f"JOIN files f ON f.id = b.file_id WHERE b.base_name IN ({ph}) "
+            "ORDER BY f.path, b.line", list(names)).fetchall()
+
+    def supertypes(self, names: set[str]) -> list[tuple[str, str]]:
+        """(type, direct supertype) for the given type names."""
+        if not names:
+            return []
+        ph = ",".join("?" for _ in names)
+        return self.conn.execute(
+            f"SELECT type_name, base_name FROM bases WHERE type_name IN ({ph})",
+            list(names)).fetchall()
 
     def binding_docs(self) -> set[str]:
         return set(json.loads(self.get_meta("binding_docs") or "[]"))

@@ -123,6 +123,21 @@ TOOLS = [
         },
     },
     {
+        "name": "change",
+        "description": ("Before changing a symbol (signature, rename, removal): "
+                        "definition, declarations it implements, overrides, and "
+                        "callers file:line in files naming its type family "
+                        "(tests marked); unrelated same-name uses only counted. "
+                        "Name-based."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"target": {"type": "string",
+                                      "description": "Type.Member, Member or Type"},
+                           "limit": {"type": "integer", "description": "default 25"}},
+            "required": ["target"],
+        },
+    },
+    {
         "name": "refs",
         "description": ("Who uses a symbol: definitions plus referencing "
                         "files with line numbers (`path:12,40`). `Type.Member` "
@@ -211,6 +226,11 @@ class McpServer:
                                        tests_only=tests)
                 + f"\n(change detection: {method})")
 
+    def _tool_change(self, args: dict) -> str:
+        from lotsman import changeview
+        return changeview.render_change(self.store, args["target"],
+                                        int(args.get("limit") or 25))
+
     def _tool_refs(self, args: dict) -> str:
         return refsview.render_refs(
             self.store, args["name"], int(args.get("limit") or 20))
@@ -249,6 +269,7 @@ class McpServer:
             "defs": self._tool_defs,
             "slice": self._tool_slice,
             "refs": self._tool_refs,
+            "change": self._tool_change,
             "impact": self._tool_impact,
         }.get(name)
         if fn is None:

@@ -19,7 +19,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "5"
+INDEX_VERSION = "6"
 
 
 @dataclass
@@ -127,6 +127,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
             result.unchanged += 1
             continue
         doc_text = None
+        bases: list = []
         try:
             if rec.lang == "markdown":
                 # Prose has long lines by nature: no generated-file check. Docs
@@ -142,7 +143,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
                 symbols, idents, lines = [], Counter(), {}  # record the file only
             else:
                 symbols = extract.extract_symbols(rec.lang, data)
-                idents, lines = extract.extract_refs_with_lines(rec.lang, data)
+                idents, lines, bases = extract.extract_refs_full(rec.lang, data)
                 wired, wired_lines = wiring.apply_with_lines(patterns, data)
                 idents.update(wired)
                 for name, extra in wired_lines.items():
@@ -153,7 +154,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines, doc_text)
+            idents, lines, doc_text, bases)
         if prev is None:
             result.added += 1
         else:

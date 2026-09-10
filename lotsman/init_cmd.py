@@ -34,8 +34,9 @@ small slice, not the whole project.
 2. "Where is the code that does X?"  -> `{cmd} search "X"` instead of grep chains
 3. "What's in this file?"            -> `{cmd} outline <file>`, then read only that line range
 4. "Who uses / where is it defined?" -> `{cmd} refs <name>` / `{cmd} defs <name>`
-5. Before editing shared code        -> `{cmd} impact <files>` — heuristic: candidates to check, not proof
-6. Read a whole file only after outline/search confirmed it is the right one.
+5. Changing a signature / renaming   -> `{cmd} change <Type.Member>` — overrides + callers file:line
+6. Before editing shared code        -> `{cmd} impact <files>` — heuristic: candidates to check, not proof
+7. Read a whole file only after outline/search confirmed it is the right one.
 
 The index lives in `.lotsman/` and updates incrementally. `{cmd} doctor --json` shows health.
 {end}"""
@@ -77,7 +78,7 @@ the `lotsman` command is not installed, use `python3 -m lotsman`.
 | Behavior or feature search | `search` before grep or broad reads |
 | Candidate file found | `outline`, then read only relevant ranges |
 | One symbol matters | `slice FILE NAME` instead of reading the whole file |
-| Symbol/API change | `refs NAME`; use `refs Class.Method` for noisy method names |
+| Symbol/API change | `change Type.Member` (overrides + family callers); `refs Class.Method` for plain usages |
 | File or batch change | `impact` before and after editing |
 | Need test candidates | `impact --tests` / MCP impact with `tests: true` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `report` |
@@ -119,7 +120,7 @@ checkout, use that command prefix instead.
 | Behavior or feature search | `lotsman search "<query>"` |
 | Candidate file found | `lotsman outline <file>`, then read only relevant ranges |
 | One symbol matters | `lotsman slice <file> <name>` instead of reading the whole file |
-| Symbol/API change | `lotsman refs <name>`; use `lotsman refs Class.Method` for noisy method names |
+| Symbol/API change | `lotsman change Type.Member` (overrides + family callers); `lotsman refs Class.Method` for plain usages |
 | File or batch change | `lotsman impact <files>` before and after editing |
 | Need test candidates | `lotsman impact <files> --tests` |
 | Need usage telemetry | run MCP with `LOTSMAN_QUERYLOG=1`, then `lotsman report` |

@@ -13,6 +13,7 @@ from pathlib import Path
 from lotsman import (embed, extract, indexer, outlineview, querylog, refsview,
                      repomap, search as search_mod, sliceview)
 from lotsman.store import Store
+from lotsman.textutil import is_test_path
 
 
 # Confidence contract for name-based lookups, embedded in JSON outputs.
@@ -208,6 +209,38 @@ def cmd_refs(args) -> int:
     return 0
 
 
+def cmd_change(args) -> int:
+    from lotsman import changeview
+    root = _root(args)
+    store = _open(root)
+    if args.json:
+        rep = changeview.collect_change(store, args.target)
+        store.close()
+        if rep is None:
+            print(json.dumps({"target": args.target, "found": False}))
+            return 1
+        row = lambda r: {"path": r.path, "line": r.line, "signature": r.signature}  # noqa: E731
+        print(json.dumps({
+            "target": args.target, "owner": rep.owner, "member": rep.member,
+            "definitions": [row(r) for r in rep.defs],
+            "declared_by": [{"type": i.type_name, **row(i.row)} for i in rep.declared_by],
+            "implementations": [{"type": i.type_name, **row(i.row)} for i in rep.impls],
+            "subtypes": [{"type": t, "path": p, "line": ln} for t, p, ln in rep.subtypes],
+            "callers": [{"path": s.path, "lines": s.lines, "same_line": s.same_line,
+                         "test": is_test_path(s.path)} for s in rep.callers],
+            "name_only_files": rep.name_only,
+            "extension_method": rep.extension,
+            "ambiguous_owners": rep.ambiguous_owners,
+            "not_covered": changeview.NOT_COVERED,
+            "confidence": REFS_CONFIDENCE,
+        }, ensure_ascii=False))
+        return 0
+    out = changeview.render_change(store, args.target, limit=args.limit)
+    store.close()
+    print(out)
+    return 1 if out.startswith("(") else 0
+
+
 def cmd_impact(args) -> int:
     from lotsman import impact
     root = _root(args)
@@ -348,6 +381,13 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_refs)
 
+    sp = sub.add_parser("change", help="before changing a symbol: definition, "
+                                       "overrides, callers file:line in its type family")
+    sp.add_argument("target", help="Type.Member, Member or Type")
+    sp.add_argument("-k", "--limit", type=int, default=25, help="caller files shown")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_change)
+
     sp = sub.add_parser("stats", help="index statistics")
     sp.set_defaults(fn=cmd_stats)
 
@@ -387,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
 
 # Read commands whose use is worth measuring (`lotsman report`).
 LOGGED_COMMANDS = frozenset({"map", "search", "outline", "slice", "defs",
-                             "refs", "impact"})
+                             "refs", "impact", "change"})
 
 
 def _run_logged(args, root: Path) -> int:

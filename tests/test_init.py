@@ -65,6 +65,7 @@ class TestInit(FixtureRepoMixin, unittest.TestCase):
         self.assertIn("Deep local index, narrow retrieval", text)
         self.assertIn("lotsman slice <file> <name>", text)
         self.assertIn("lotsman refs Class.Method", text)
+        self.assertIn("lotsman change Type.Member", text)
         self.assertIn("lotsman impact <files> --tests", text)
         self.assertIn(".lotsman/wiring.json", text)
 

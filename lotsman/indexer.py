@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import docs, extract, jsonrefs, scanner, unity, wiring
+from lotsman import csdefines, docs, extract, jsonrefs, scanner, unity, wiring
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -19,7 +19,7 @@ DB_RELPATH = ".lotsman/index.db"
 INDEX_ENV = "LOTSMAN_INDEX"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "8"
+INDEX_VERSION = "9"
 
 
 @dataclass
@@ -131,6 +131,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         doc_text = None
         bases: list = []
         assembly = None
+        directives = None
         try:
             if rec.lang == unity.ASMDEF_LANG:
                 # Assembly definitions: facts for `unity`/outline, no symbols.
@@ -167,6 +168,8 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
             else:
                 symbols = extract.extract_symbols(rec.lang, data)
                 idents, lines, bases = extract.extract_refs_full(rec.lang, data)
+                if rec.lang == "csharp":
+                    directives = csdefines.scan(data)
                 wired, wired_lines = wiring.apply_with_lines(patterns, data)
                 idents.update(wired)
                 for name, extra in wired_lines.items():
@@ -177,7 +180,7 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents, lines, doc_text, bases, assembly)
+            idents, lines, doc_text, bases, assembly, directives)
         if prev is None:
             result.added += 1
         else:

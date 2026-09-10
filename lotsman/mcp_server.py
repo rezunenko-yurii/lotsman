@@ -140,7 +140,8 @@ TOOLS = [
     {
         "name": "unity",
         "description": ("Unity project facts: the assembly (asmdef) compiling a "
-                        "file or type, its references and who references it; "
+                        "file or type, its references and who references it, "
+                        "targets it builds for, #if branches per platform/Editor; "
                         "with `uses`, whether that code can see another type."),
         "inputSchema": {
             "type": "object",
@@ -212,7 +213,8 @@ class McpServer:
             return f"(no symbols indexed for {args['file']})"
         return "\n".join([f"{args['file']}:",
                           *outlineview.outline_header(self.store, args["file"], rows),
-                          *outlineview.outline_rows(rows)])
+                          *outlineview.outline_rows(rows, marks=outlineview.condition_marks(
+                              self.store, args["file"], rows))])
 
     def _tool_defs(self, args: dict) -> str:
         rows = self.store.symbols_named(args["name"])
@@ -247,7 +249,8 @@ class McpServer:
 
     def _tool_unity(self, args: dict) -> str:
         from lotsman import unity
-        return unity.render_unity(self.store, args["target"], args.get("uses"))
+        return unity.render_unity(self.store, args["target"], args.get("uses"),
+                                  root=self.root)
 
     def _tool_refs(self, args: dict) -> str:
         return refsview.render_refs(

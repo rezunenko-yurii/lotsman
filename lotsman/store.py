@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS assemblies (
     name TEXT NOT NULL,
     data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS directives (
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    cond TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_directives_file ON directives(file_id);
 CREATE INDEX IF NOT EXISTS idx_bases_base ON bases(base_name);
 CREATE INDEX IF NOT EXISTS idx_bases_type ON bases(type_name);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
@@ -172,6 +180,7 @@ class Store:
         self.conn.execute("DELETE FROM idents")
         self.conn.execute("DELETE FROM bases")
         self.conn.execute("DELETE FROM assemblies")
+        self.conn.execute("DELETE FROM directives")
         if self.has_fts:
             self.conn.execute("DELETE FROM docs_fts")
         self.conn.execute("DELETE FROM symbols")
@@ -220,10 +229,12 @@ class Store:
                     doc_text: dict[tuple[str, int], tuple[str, str]] | None = None,
                     bases: list[tuple[str, str, int]] | None = None,
                     assembly: tuple[str, str, str] | None = None,
+                    directives: list | None = None,
                     ) -> None:
         """Replace a file's index data atomically (caller batches in a transaction).
         doc_text: (section name, line) -> (heading terms, body terms);
-        assembly: (kind, name, JSON data) of a Unity `.asmdef`/`.asmref`."""
+        assembly: (kind, name, JSON data) of a Unity `.asmdef`/`.asmref`;
+        directives: C# `#if` branches and `#define`s (csdefines.Directive)."""
         cur = self.conn.execute("SELECT id FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
         if row:
@@ -236,6 +247,7 @@ class Store:
             self.conn.execute("DELETE FROM idents WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM bases WHERE file_id=?", (file_id,))
             self.conn.execute("DELETE FROM assemblies WHERE file_id=?", (file_id,))
+            self.conn.execute("DELETE FROM directives WHERE file_id=?", (file_id,))
         else:
             cur = self.conn.execute(
                 "INSERT INTO files(path, sha, mtime, size, lang) VALUES(?,?,?,?,?)",
@@ -254,6 +266,10 @@ class Store:
             self.conn.executemany(
                 "INSERT INTO bases(file_id, type_name, base_name, line) VALUES(?,?,?,?)",
                 [(file_id, t, b, ln) for t, b, ln in bases])
+        if directives:
+            self.conn.executemany(
+                "INSERT INTO directives(file_id, kind, line, end_line, cond) VALUES(?,?,?,?,?)",
+                [(file_id, d.kind, d.line, d.end_line, d.cond) for d in directives])
         if assembly:
             self.conn.execute(
                 "INSERT INTO assemblies(file_id, kind, name, data) VALUES(?,?,?,?)",
@@ -405,6 +421,13 @@ class Store:
         return self.conn.execute(
             f"SELECT type_name, base_name FROM bases WHERE type_name IN ({ph})",
             list(names)).fetchall()
+
+    def directives_in_file(self, path: str) -> list:
+        """C# `#if` branches and `#define`s of one file, by line."""
+        from lotsman.csdefines import Directive
+        return [Directive(*row) for row in self.conn.execute(
+            "SELECT d.kind, d.line, d.end_line, d.cond FROM directives d "
+            "JOIN files f ON f.id = d.file_id WHERE f.path = ? ORDER BY d.line", (path,))]
 
     def has_file(self, path: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE path=?", (path,)).fetchone() is not None

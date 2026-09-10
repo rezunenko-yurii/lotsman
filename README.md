@@ -314,7 +314,7 @@ the agent should only see the next useful piece.
 | `refs NAME` | Name-based usage candidates as `path:line,line` | Type-resolved proof | You need places to inspect |
 | `change Type.Member` | Definition, overrides/implementations, callers `file:line` in the type family, tests marked | A compiler's verdict | You are about to change a signature, rename or remove a member |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
-| `unity FILE [USES]` | Unity: the assembly (asmdef) compiling a file/type, its references `asmdef:line`, who references it; with USES, whether that code is visible | Platform/define evaluation (planned), a compiler's verdict | You add a dependency across assemblies or ask what recompiles |
+| `unity FILE [USES]` | Unity: the assembly (asmdef) compiling a file/type, its references `asmdef:line`, who references it, targets it builds for, `#if` branches with where each compiles, undefined symbols, define sites; with USES, whether that code is visible | A compiler's verdict; defines set by build scripts | You add a dependency across assemblies, ask what recompiles, or whether code runs on a platform/in the Editor |
 
 Map budget is output budget, not index depth. `map --budget 5000` gives the
 agent more text; it does not make the index more complete.
@@ -384,6 +384,7 @@ Lotsman works best when code has stable named symbols in ordinary source files.
 |---|---|---|
 | Best | Python, JavaScript, TypeScript/TSX, Go, Rust, Java, C/C++, Ruby, C#, PHP | tree-sitter definitions; tree-sitter references except PHP, where references are lexical today |
 | Configs | JSON (`.json`, JSON `.rc`) | type names, member-named keys and values count as references (`refs`/`change` `data —` block); keys in `outline` |
+| Unity conditional code | C# `#if`/`#elif`/`#else`, Player Settings defines, `csc.rsp`, asmdef `versionDefines`/`defineConstraints` | `[#if X]` marks in `outline`; per-target verdicts (Editor, iOS, Android, …) and undefined symbols in `unity` |
 | Unity assemblies | `.asmdef`, `.asmref` (GUIDs from `.meta`) | file → assembly (predefined `Assembly-CSharp*` rules included), references and reverse references, visibility checks in `unity`, an `assembly:` line in `outline`, `change` flags callers whose assembly cannot see the definition |
 | Docs | Markdown (`.md`) | heading sections in `outline`, full-text section search in Russian and English (needs SQLite FTS5; `doctor` checks), binding docs marked |
 | Useful fallback | Kotlin, Swift, Scala, Lua, Bash and other source-like text | file discovery, regex definitions where patterns match, lexical identifiers |
@@ -526,7 +527,7 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman defs NAME` | show definitions of a symbol |
 | `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups |
 | `lotsman change TARGET [-k N] [--json]` | before a change: definition, supertype declarations, overrides, family-gated callers `file:line`, tests marked |
-| `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it; with USES, whether TARGET's code can see it |
+| `lotsman unity TARGET [USES]` | Unity: assembly of a file/type/assembly name, its references and who references it, build targets and `#if` verdicts per target; with USES, whether TARGET's code can see it |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |

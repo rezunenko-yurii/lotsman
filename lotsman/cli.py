@@ -139,6 +139,7 @@ def cmd_outline(args) -> int:
     store = _open(root)
     rows = store.symbols_in_file(args.file)
     header = outlineview.outline_header(store, args.file, rows) if rows else []
+    marks = outlineview.condition_marks(store, args.file, rows)
     store.close()
     if args.json:
         print(json.dumps([asdict(r) for r in rows], ensure_ascii=False))
@@ -147,7 +148,7 @@ def cmd_outline(args) -> int:
         print(f"(no symbols indexed for {args.file})")
         return 1
     print(f"{args.file}:")
-    print("\n".join([*header, *outlineview.outline_rows(rows)]))
+    print("\n".join([*header, *outlineview.outline_rows(rows, marks=marks)]))
     return 0
 
 
@@ -248,7 +249,7 @@ def cmd_unity(args) -> int:
     from lotsman import unity
     root = _root(args)
     store = _open(root)
-    out = unity.render_unity(store, args.target, args.uses)
+    out = unity.render_unity(store, args.target, args.uses, root=root)
     store.close()
     print(out)
     return 1 if out.startswith("(") else 0
@@ -403,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("unity", help="Unity project facts: the assembly (asmdef) "
                                       "compiling a file/type, its references, who "
-                                      "references it")
+                                      "references it, #if branches per target")
     sp.add_argument("target", help="file path, type/symbol name or assembly name")
     sp.add_argument("uses", nargs="?", help="type, file or assembly the target's "
                                             "code wants to use: is it visible?")

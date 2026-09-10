@@ -107,7 +107,10 @@ class Runner:
     # --- path normalisation --------------------------------------------------
 
     def rel(self, path: str, root: str) -> str:
-        """Project-relative path for a path printed or read under ROOT."""
+        """Project-relative path for a path printed or read under ROOT
+        (lotsman prints files above an indexed Assets/ as `../X`)."""
+        if path.startswith("../") and root == "assets":
+            return os.path.normpath(self.assets_prefix + path).replace(os.sep, "/")
         path = path.lstrip("./")
         if path.startswith(self.assets_prefix) or root == "project":
             return path

@@ -15,6 +15,8 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from lotsman import csdefines
+
 ASMDEF_LANG = "asmdef"
 META_UNITY_ASSETS = "unity_assets"  # meta key: "" (repo is Assets/) or "Assets/"
 
@@ -315,16 +317,17 @@ def render_visibility(project: UnityProject, user: Assembly, owner: Assembly,
     return f"{what} ({owner.name}) is NOT visible from {user.name}: {fix}"
 
 
-def _locate(store, project: UnityProject, target: str) -> list[tuple[str, Assembly, str]]:
-    """(label, assembly, why) for a file path, an assembly name, or a symbol
-    name (each defining file, types first, at most 3)."""
+def _locate(store, project: UnityProject, target: str
+            ) -> list[tuple[str, str, int, Assembly, str]]:
+    """(label, file, line, assembly, why) for a file path, an assembly name,
+    or a symbol name (each defining file, types first, at most 3)."""
     target = target.strip()
     if store.has_file(target):
         found = project.assembly_for(target)
-        return [(target, *found)] if found else []
+        return [(target, target, 0, *found)] if found else []
     if target in project.by_name:
         asm = project.by_name[target]
-        return [(asm.path or asm.name, asm, "predefined" if asm.predefined else "")]
+        return [(asm.path or asm.name, "", 0, asm, "predefined" if asm.predefined else "")]
     rows = sorted(store.symbols_named(target.rpartition(".")[2]),
                   key=lambda r: (r.kind not in ("class", "type"), r.path))
     out, seen = [], set()
@@ -332,28 +335,95 @@ def _locate(store, project: UnityProject, target: str) -> list[tuple[str, Assemb
         found = project.assembly_for(r.path) if r.path.endswith(".cs") else None
         if found and r.path not in seen:
             seen.add(r.path)
-            out.append((f"{r.path}:{r.line}  {r.signature}", *found))
+            out.append((f"{r.path}:{r.line}  {r.signature}", r.path, r.line, *found))
     return out[:3]
 
 
-def render_unity(store, target: str, uses: str | None = None) -> str:
+MAX_COND_GROUPS = 12
+MAX_COND_LINES = 20
+
+
+def render_conditions(store, root, pd, asm: Assembly, path: str, line: int) -> list[str]:
+    """Targets the assembly builds for, and the file's `#if` branches grouped
+    by effective condition with a verdict per target."""
+    directives = store.directives_in_file(path) if path else []
+    ctx = csdefines.context_for(pd, asm, directives, root)
+    targets = pd.targets
+    built = {t: csdefines.compiled_on(asm, ctx, t) for t in targets}
+    out = [f"compiled for: {csdefines.verdict(built)}"]
+    branches = [d for d in directives if d.kind == "if"]
+    if not branches:
+        return out
+    judge = lambda cond: csdefines.verdict(  # noqa: E731
+        {t: (csdefines.evaluate(cond, lambda s, t=t: ctx.value(s, t)) if built[t] is not False
+             else False) for t in targets})
+    if line:
+        here = csdefines.region_at(directives, line)
+        if here:
+            out.append(f"declared under #if {here.cond} → {judge(here.cond)}")
+    editor = (f"; Editor = active target {pd.active} ({pd.active_source})" if pd.active
+              else "; Editor's active target unknown")
+    out.append(f"#if branches (effective condition → where it compiles{editor}):")
+    groups: dict[str, list[int]] = {}
+    for d in branches:
+        groups.setdefault(d.cond, []).append(d.line)
+    for cond, lines in list(groups.items())[:MAX_COND_GROUPS]:
+        shown = ",".join(map(str, lines[:MAX_COND_LINES])) + ("…" if len(lines) > MAX_COND_LINES else "")
+        out.append(f"  {cond} → {judge(cond)} — {len(lines)}× {path}:{shown}")
+    if len(groups) > MAX_COND_GROUPS:
+        out.append(f"  … {len(groups) - MAX_COND_GROUPS} more conditions")
+    syms = [x for cond in groups for x in csdefines.symbols(cond)]
+    nowhere = [x for x in dict.fromkeys(syms) if ctx.defined_nowhere(x)]
+    project_syms = [x for x in dict.fromkeys(syms) if not csdefines.BUILTIN_RE.match(x)]
+    if nowhere:
+        out.append("defined nowhere: " + ", ".join(nowhere) + " (not in Player Settings "
+                   "scriptingDefineSymbols, csc.rsp, asmdef versionDefines or #define — "
+                   "false unless a build script sets it)")
+    if project_syms:
+        out += render_define_sites(pd)
+    return out
+
+
+def render_define_sites(pd) -> list[str]:
+    """Where project define symbols come from (identical groups merged)."""
+    if not pd.settings_path:
+        sites = "Player Settings: no ProjectSettings.asset found"
+    elif not pd.sites:
+        sites = f"Player Settings: no scriptingDefineSymbols ({pd.settings_path})"
+    else:
+        merged: dict[tuple, list] = {}
+        for site in pd.sites:
+            merged.setdefault(tuple(site.symbols), []).append(site)
+        sites = "; ".join(
+            f"{group[0].source}:{','.join(str(x.line) for x in group)} "
+            f"{', '.join(g for x in group for g in x.groups)} = {';'.join(syms) or '(empty)'}"
+            for syms, group in merged.items())
+    rsp = f"{pd.rsp_path} = {';'.join(sorted(pd.rsp))}" if pd.rsp_path else "csc.rsp: none"
+    return [f"project defines: {sites}; {rsp}"]
+
+
+def render_unity(store, target: str, uses: str | None = None, root=None) -> str:
     """`unity TARGET [USES]`: the assembly compiling TARGET (file, type or
-    assembly), its references and who references it; with USES, whether
-    TARGET's assembly can see the assembly of USES."""
+    assembly), its references and who references it, the targets it builds
+    for and its `#if` branches per target; with USES, whether TARGET's
+    assembly can see the assembly of USES."""
     project = load(store)
     if project is None:
         return "(not a Unity project: no ProjectSettings/ at or above the indexed folder)"
     hits = _locate(store, project, target)
     if not hits:
         return f"(`{target}`: no indexed file, assembly or C# symbol by that name)"
+    pd = csdefines.load_project(root) if root is not None else None
     out: list[str] = []
-    for label, asm, why in hits:
+    for label, path, line, asm, why in hits:
         out += [label, *render_assembly(project, asm, why)]
+        if pd is not None:
+            out += render_conditions(store, root, pd, asm, path, line)
     if uses:
         owners = _locate(store, project, uses)
         if not owners:
             out.append(f"(`{uses}`: no indexed file, assembly or C# symbol by that name)")
-        for label, owner, _ in owners:
+        for label, _, _, owner, _ in owners:
             out.append(f"uses {label}")
-            out += ["  " + render_visibility(project, asm, owner, uses) for _, asm, _ in hits]
+            out += ["  " + render_visibility(project, hit[3], owner, uses) for hit in hits]
     return "\n".join(out)

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **`#if` and define symbols (Unity).** C# `#if/#elif/#else` branches are
+  indexed with their effective condition (`#else` of `#if A` is `!A`, nesting
+  ANDed). `outline` marks symbols under a condition (`[#if UNITY_IOS]`, only
+  where it differs from the enclosing symbol's: +0.5% outline size on a Unity
+  project). `unity FILE|Type` adds the targets the assembly builds for
+  (asmdef platforms and `defineConstraints`), each condition with its lines
+  and where it compiles (`UNITY_IOS && !UNITY_EDITOR → iOS only`), symbols
+  defined nowhere, and where project defines come from (Player Settings
+  `scriptingDefineSymbols` with line numbers, `csc.rsp`, asmdef
+  `versionDefines` checked against Packages). Three-valued: what files cannot
+  tell (the Editor's active target without a generated csproj, Unity's
+  `ENABLE_*` switches) is `?`, not a guess. Conditions agree with
+  tree-sitter's preprocessor nodes on 360/360 symbols. Index format 9.
 - **Unity assemblies.** `.asmdef`/`.asmref` files are indexed (GUIDs from the
   `.meta` next to them). `lotsman unity FILE|Type|Assembly` (CLI and MCP tool)
   names the assembly that compiles the code — nearest asmdef, or Unity's

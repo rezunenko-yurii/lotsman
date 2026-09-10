@@ -5,8 +5,8 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-10 (later session): A1 done and committed too; **next: P1,
-then U0** (design notes under U0). Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-10 (later session): A1 and P1 done and committed too;
+**next: U0** (design notes under U0; the P1 notes there are implemented). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -322,11 +322,42 @@ call each, found 1.0; asm-03/04 wait for P1); all 28: 48,913 tokens.
 pass; the five corpus benches not rerun (no `.asmdef` there — the change
 cannot reach them).
 
-**P1. `#if` and define symbols.** Parse `#if/#elif/#else` regions; outline
+**P1. `#if` and define symbols.** ✅ Parse `#if/#elif/#else` regions; outline
 marks symbols under a condition (`[#if UNITY_IOS]`); per-platform defines from
 ProjectSettings + asmdef `defineConstraints`/`versionDefines` + `csc.rsp`;
 answer "is this compiled on iOS/Android/Editor?" in the facts command.
 - Done when: conditions correct on 20 sampled symbols; outline growth ≤ 5%.
+
+Status 2026-09-10 — implemented (`lotsman/csdefines.py`, INDEX_VERSION 9):
+line scan of `#if/#elif/#else/#endif/#define/#undef` (BOM-safe; unterminated
+branches run to EOF), table `directives` with the effective condition per
+branch; three-valued evaluator; `ProjectDefines` read from disk on each
+`unity` call (Player Settings groups by name or old numeric id, `csc.rsp` /
+`mcs.rsp` at Assets root and next to an asmdef, ProjectVersion.txt version
+symbols, active Editor target + Editor defines from `Assembly-CSharp.csproj`,
+package versions from `Packages/packages-lock.json`/`manifest.json` for
+`versionDefines`). Targets shown: Editor + groups present in Player Settings
+(fallback iOS/Android/Standalone). Symbols matching Unity/.NET prefixes
+(`UNITY_`, `ENABLE_`, `PLATFORM_`, `NET_`, …) are unknown, not undefined;
+other symbols no source defines are "defined nowhere" (false). `outline`
+marks symbols whose condition differs from the enclosing symbol's; `unity`
+prints `compiled for`, `declared under #if` for symbol targets, conditions
+grouped with `path:lines` (≤ 12 groups × 20 lines), `defined nowhere`, and
+`project defines` with ProjectSettings line numbers (paths above an indexed
+`Assets/` print as `../`; the B0 harness maps them).
+
+Measured: **done criteria met** — conditions vs an independent oracle
+(tree-sitter `preproc_*` ancestry, compared by truth table): 360/360 symbols
+under `#if` in files tree-sitter parses cleanly (20 random samples printed and
+read; 141 symbols in files with parse errors not oracle-checked; the oracle
+found one real bug — BOM before a first-line `#if` — fixed); outline size
++0.50% over all 1297 C# files (21 files, 186 rows marked). B0
+(`b0_p1_2026-09-10.json`): **assembly 4,272 tokens / 15 calls (baseline) →
+1,490 / 5**, found 1.0 (asm-03 3,538 → 152 tokens; asm-04 787 vs 321 — the
+report also shows the dead `!UNITY_2018_1_OR_NEWER` branch); **all 28:
+132,287 → 45,692 (−65%)**. Cold index 3.65 s; `outline`/`refs`/`unity`
+0.16–0.17 s; `bench_unity.py` gates pass; five corpus benches not rerun (no C#
+there; C# fixture tests green).
 
 **U0. `unity` facts command (new command, folded into one MCP tool with C1
 if the tool budget requires).** `lotsman unity [file|type]`: assembly and its

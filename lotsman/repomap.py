@@ -45,11 +45,11 @@ def generate_map(
         if not nodes:
             return "(empty index — run `lotsman index` first)"
 
-        edges = graph.build_edges(definitions, references, mentions)
-        personalization = None
+        owners = store.member_owners(graph.OWNER_GATED_SUFFIXES)
+        edges = graph.build_edges(definitions, references, mentions, owners)
         valid_focus = {f for f in focus if f in nodes}
-        if valid_focus:
-            personalization = {f: 1.0 for f in valid_focus}
+        personalization = _personalization(valid_focus, mentions,
+                                           definitions, references)
         rank = graph.pagerank(nodes, edges, personalization)
         def_ranks = graph.rank_definitions(rank, edges)
         ranked = sorted(
@@ -87,6 +87,27 @@ def generate_map(
             seen_lines.add((path, row.line))
             used_tokens += cost
     return _render(selected, file_rank)
+
+
+MENTION_REFERRER_WEIGHT = 0.3
+
+
+def _personalization(focus: set[str], mentions: set[str],
+                     definitions: dict[str, set[str]],
+                     references: dict) -> dict[str, float] | None:
+    """Random jumps land on the task's neighborhood: focus files, files
+    defining a mentioned name and, weaker, files using it. Without this a
+    mention only nudged edges into one file and the rest of the map stayed
+    the global top (measured: 3 of 44 files relevant for `WindowsManager`)."""
+    weights: dict[str, float] = {f: 1.0 for f in focus}
+    for ident in mentions:
+        for path in definitions.get(ident, ()):
+            weights[path] = max(weights.get(path, 0.0), 1.0)
+        for path, counts in references.items():
+            if ident in counts:
+                weights[path] = max(weights.get(path, 0.0),
+                                    MENTION_REFERRER_WEIGHT)
+    return weights or None
 
 
 def _render(selected: dict[str, list[SymbolRow]], file_rank: dict[str, float]) -> str:

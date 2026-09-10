@@ -1,7 +1,10 @@
+import shutil
+import tempfile
 import unittest
 from collections import Counter
+from pathlib import Path
 
-from lotsman import graph
+from lotsman import graph, indexer
 
 
 class TestGraph(unittest.TestCase):
@@ -34,6 +37,48 @@ class TestGraph(unittest.TestCase):
         references = {"a.py": Counter({"solo": 5})}
         edges = graph.build_edges(definitions, references)
         self.assertEqual(dict(edges), {})
+
+    def test_foreign_member_edges_dropped(self):
+        # `dict.TryGetValue(...)` in b.cs is not a use of Registry.TryGetValue:
+        # b.cs never mentions `Registry`. a.cs does, so its edge stays.
+        definitions = {"TryGetValue": {"Registry.cs"}, "Registry": {"Registry.cs"}}
+        references = {
+            "a.cs": Counter({"Registry": 1, "TryGetValue": 1}),
+            "b.cs": Counter({"TryGetValue": 4}),
+        }
+        owners = {("TryGetValue", "Registry.cs"): {"Registry"}}
+        edges = graph.build_edges(definitions, references, owners=owners)
+        self.assertIn("Registry.cs", edges["a.cs"])
+        self.assertNotIn("b.cs", edges)
+
+    def test_generic_names_form_no_edges_unless_mentioned(self):
+        definitions = {"Window": {"Window.cs"}}
+        references = {"a.cs": Counter({"Window": 2})}
+        self.assertEqual(dict(graph.build_edges(definitions, references)), {})
+        edges = graph.build_edges(definitions, references, mentions={"Window"})
+        self.assertIn("Window.cs", edges["a.cs"])
+
+
+class TestMemberOwners(unittest.TestCase):
+    def test_owner_is_innermost_enclosing_type(self):
+        tmp = Path(tempfile.mkdtemp(prefix="lotsman_test_"))
+        try:
+            (tmp / "Reg.cs").write_text(
+                "public class Registry {\n"
+                "    public bool TryGetValue(string k) => true;\n"
+                "    class Inner {\n"
+                "        void Flush() { }\n"
+                "    }\n"
+                "}\n"
+                "public static class Tools { public static void Flush() { } }\n")
+            store = indexer.open_store(tmp)
+            indexer.index_repo(tmp, store)
+            owners = store.member_owners((".cs",))
+            store.close()
+            self.assertEqual(owners[("TryGetValue", "Reg.cs")], {"Registry"})
+            self.assertEqual(owners[("Flush", "Reg.cs")], {"Inner", "Tools"})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

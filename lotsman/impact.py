@@ -13,11 +13,42 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from lotsman.store import Store
-from lotsman.textutil import estimate_tokens, is_test_path
+from lotsman.graph import OWNER_GATED_SUFFIXES
+from lotsman.store import TYPE_KINDS, Store, enclosing_types
+from lotsman.textutil import estimate_tokens, is_generic_name, is_test_path
 
 DEFAULT_SINCE_HOURS = 24.0
 DEFAULT_BUDGET = 1500
+
+
+def _member_owners(store: Store, changed: list[str],
+                   defs_in_changed: dict[str, list]) -> dict[str, set[str]]:
+    """Member name -> owning types, for C# members of the changed files.
+    Not gated: names also defined as types (referenced directly) and
+    extension methods (callers never name their static class)."""
+    owners: dict[str, set[str]] = defaultdict(set)
+    for path in changed:
+        if not path.endswith(OWNER_GATED_SUFFIXES):
+            continue
+        rows = [(r.name, r.kind, r.line, r.end_line)
+                for r in store.symbols_in_file(path)]
+        for name, types in enclosing_types(rows, ("method", "field", "event")).items():
+            owners[name] |= types
+    for name in list(owners):
+        rows = defs_in_changed.get(name, [])
+        if any(r.kind in TYPE_KINDS or "(this " in r.signature for r in rows):
+            del owners[name]
+    return owners
+
+
+def _dependent_lines(deps: dict[str, dict[str, int]]) -> list[str]:
+    ranked = sorted(deps.items(), key=lambda kv: sum(kv[1].values()), reverse=True)
+    lines = []
+    for path, name_counts in ranked:
+        top = sorted(name_counts.items(), key=lambda kv: kv[1], reverse=True)
+        used = ", ".join(f"{n} ({c}x)" for n, c in top[:4])
+        lines.append(f"  {path} — uses {used}")
+    return lines
 
 
 def detect_changed(root: Path, store: Store,
@@ -60,20 +91,48 @@ def generate_impact(store: Store, changed: list[str],
         for sym in store.symbols_in_file(path):
             defs_in_changed[sym.name].append(sym)
     names = set(defs_in_changed)
+    owners = _member_owners(store, changed, defs_in_changed)
+    mentioning: dict[str, set[str]] = {}  # type name -> files naming it
+
+    def names_owner(path: str, types: set[str]) -> bool:
+        for t in types:
+            if t not in mentioning:
+                mentioning[t] = {p for p, _ in store.files_referencing(t)}
+            if path in mentioning[t]:
+                return True
+        return False
 
     # Dependents: who references those names from outside the changed set.
-    uses_by_name: dict[str, int] = defaultdict(int)      # total external uses
+    # C# members count as direct uses only where the file also names the
+    # owning type; elsewhere they are name-only matches (`Label` in a file
+    # using UI Toolkit's Label) — listed apart, never dropped.
+    uses_by_name: dict[str, int] = defaultdict(int)      # direct external uses
+    weak_by_name: dict[str, int] = defaultdict(int)      # name-only matches
     dependents: dict[str, dict[str, int]] = defaultdict(dict)  # file -> name -> count
+    weak_dependents: dict[str, dict[str, int]] = defaultdict(dict)
     for name in names:
+        if is_generic_name(name):
+            continue  # `Add`, `Update`: every file "uses" them
+        types = owners.get(name)
         for path, count in store.files_referencing(name):
             if path in changed_set:
                 continue
-            dependents[path][name] = count
-            uses_by_name[name] += count
+            if types and not names_owner(path, types):
+                weak_dependents[path][name] = count
+                weak_by_name[name] += count
+            else:
+                dependents[path][name] = count
+                uses_by_name[name] += count
+    weak_dependents = {p: nc for p, nc in weak_dependents.items()
+                       if p not in dependents}
 
     if tests_only:
         dependents = {
             path: name_counts for path, name_counts in dependents.items()
+            if is_test_path(path)
+        }
+        weak_dependents = {
+            path: name_counts for path, name_counts in weak_dependents.items()
             if is_test_path(path)
         }
 
@@ -90,11 +149,14 @@ def generate_impact(store: Store, changed: list[str],
         if not syms:
             lines.append("      (no indexed symbols)")
             continue
-        ranked_syms = sorted(syms, key=lambda s: uses_by_name.get(s.name, 0),
-                             reverse=True)
+        ranked_syms = sorted(
+            syms, key=lambda s: (uses_by_name.get(s.name, 0),
+                                 weak_by_name.get(s.name, 0)), reverse=True)
         for s in ranked_syms[:8]:
-            uses = uses_by_name.get(s.name, 0)
+            uses, weak = uses_by_name.get(s.name, 0), weak_by_name.get(s.name, 0)
             suffix = f"   <- used by others {uses}x" if uses else ""
+            if weak:
+                suffix += (" " if uses else "   <- ") + f"(+{weak}x name-only)"
             lines.append(f"{s.line:5}: {s.signature}{suffix}")
 
     if dependents:
@@ -102,19 +164,18 @@ def generate_impact(store: Store, changed: list[str],
         if tests_only:
             header += " (tests only)"
         lines.append(header + ":")
-        ranked_deps = sorted(
-            dependents.items(),
-            key=lambda kv: sum(kv[1].values()), reverse=True)
-        for path, name_counts in ranked_deps:
-            top = sorted(name_counts.items(), key=lambda kv: kv[1], reverse=True)
-            used = ", ".join(f"{n} ({c}x)" for n, c in top[:4])
-            lines.append(f"  {path} — uses {used}")
+        lines += _dependent_lines(dependents)
     else:
         none_line = "\nImpacted files"
         if tests_only:
             none_line += " (tests only)"
         none_line += ": none (nothing references the changed symbols)"
         lines.append(none_line)
+    if weak_dependents:
+        lines.append(f"\nName-only matches ({len(weak_dependents)} files: a "
+                     "member name matches, its type is never named there — "
+                     "same-named API, or reached via var/DI/inheritance):")
+        lines += _dependent_lines(weak_dependents)
 
     # Budget cap: cut whole lines from the tail.
     out: list[str] = []

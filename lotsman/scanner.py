@@ -117,16 +117,29 @@ def _walk_files(root: Path) -> list[str]:
     return result
 
 
+def is_unity_project(root: Path) -> bool:
+    """Unity project root, or its `Assets/` folder indexed on its own."""
+    return ((root / "ProjectSettings").is_dir()
+            or (root.name == "Assets" and (root.parent / "ProjectSettings").is_dir()))
+
+
+def _hidden_dir(part: str, unity: bool) -> bool:
+    """`Samples~`, `Documentation~`: never compiled (Unity) or backups; in a
+    Unity project dot-folders are skipped by the engine as well."""
+    return part.endswith("~") or (unity and part.startswith("."))
+
+
 def scan(root: Path) -> list[FileRecord]:
     """Enumerate source files under root with detected language."""
     names = _git_files(root)
     if names is None:
         names = _walk_files(root)
     ignore = load_ignore_patterns(root)
+    unity = is_unity_project(root)
     records: list[FileRecord] = []
     for rel in names:
         parts = rel.split("/")
-        if any(p in SKIP_DIRS for p in parts[:-1]):
+        if any(p in SKIP_DIRS or _hidden_dir(p, unity) for p in parts[:-1]):
             continue
         if ignore and is_ignored(rel, ignore):
             continue

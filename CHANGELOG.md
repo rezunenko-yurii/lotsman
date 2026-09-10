@@ -1,6 +1,71 @@
 # Changelog
 
-## Unreleased — 2026-07-10
+## 1.6.0 — 2026-09-10
+
+C# / Unity release: references that see how C# code actually uses types,
+with line numbers, plus quieter maps and cheaper slices.
+
+### C# / Unity
+
+An independent review on a Unity project (1.3k C# files) found `refs`
+reporting 0 of 221 files for a static class. Fixed and measured with the new
+`benchmarks/bench_unity.py` (recall of `refs` against a comment- and
+string-stripped `grep -rlw`, by declaration kind). The index format changed
+(`INDEX_VERSION` 4): the first run after upgrading rebuilds it automatically.
+
+- **C# `refs` see every PascalCase use site** — static receivers
+  (`ExLog.Info`), enum values, constants, generic arguments
+  (`GetComponent<T>`, `List<T>`), property/event/indexer types, `typeof`,
+  `is`/`as`/casts, `nameof`, attribute arguments, method groups and
+  `?.` calls; declaration names, namespaces and camelCase locals stay out.
+  `[Test]` also counts as a use of `TestAttribute`. Recall by kind, before →
+  after: static class 0.5% → 98.9%, enum 25% → 94%, class 73% → 99.5%,
+  interface 88% → 100%, struct 76% → 100%, delegate 0% → 100%,
+  method 78% → 99%, property 7% → 89% (camelCase properties are skipped by
+  design — they look like locals).
+- **`refs` prints `file:line`** — lines grouped per file (`path:12,40,88
+  (+7)`, 6 per file), with the total of files and lines, so agents no longer
+  grep afterwards to find the sites. JSON gains `lines`, `ambiguous` and, for
+  `Type.Member`, `same_line`.
+- **Ambiguity is flagged** — when several files define the name, `refs` says
+  so and suggests `Type.Member`. `Type.Member` now narrows the definitions to
+  files that define `Type`, lists files where both names share a line first
+  and the rest as "weaker"; files defining another `Member` are no longer
+  excluded from its references.
+- **Case-sensitive stopwords for AST references** — a class `Window` or a
+  property `Type` was invisible to `refs`; map ranking and `impact` still
+  ignore such generic names.
+- **Signatures skip attribute lines** — 19% of C# signatures (`[Test]`,
+  `[MenuItem(...)]`) showed only the attribute; now the declaration, with
+  same-line attributes kept (`[SerializeField] private int hp;`). Java
+  annotations and TS decorators likewise. Symbol lines point at the
+  declaration; `slice` still shows the attribute lines.
+- **C# fields, events, delegates, records** — listed by `outline`/`defs`/
+  `refs`; runs of fields/events collapse to one `[fields] a, b, c` line.
+  Fields/events stay out of search, embeddings and the map (they displaced
+  up to 8 of 10 search hits when included).
+- **Map noise** — C# member names count toward a definition only from files
+  that also name its owning type (`dict.TryGetValue` no longer ranks a
+  repo's `TryGetValue`); `map --mention X` now personalizes PageRank toward
+  files defining and using `X` (direct neighbors of `WindowsManager` in the
+  map: 9/44 → 13/33 files); Unity-hidden folders (`Samples~/`, and dot-folders
+  in Unity projects) are no longer indexed. Python maps are unchanged
+  (checked byte-for-byte on the stdlib).
+- **No silent regex fallback** — if a tree-sitter grammar fails to load,
+  every CLI run warns on stderr and MCP tool output carries the warning; the
+  index rebuilds when a grammar breaks or recovers instead of mixing rows.
+- **`impact` separates name-only matches** — for C# members, files that
+  never name the owning type are listed apart as "name-only matches" (never
+  dropped); extension methods are exempt. Example: 138 impacted files for a
+  UI helper became 2 direct + 136 name-only.
+- **`slice` shows local context** — enclosing types plus 3 sibling
+  signatures each side instead of the whole-file skeleton: 3.5k → 1.0k chars
+  for one method in a 360-line file, 16k → 0.7k in a 2.3k-line one.
+- Signature whitespace runs are squeezed (`Data     data` → `Data data`).
+- Django, WordPress, Vite, Gin and ripgrep benchmark gates pass with
+  unchanged token savings; tests also run green on Python 3.10 and 3.12.
+
+### Also since 1.5.0
 
 - **`lotsman update`** — explicit maintenance command for refreshing managed
   agent artifacts and the local index after upgrading Lotsman or changing

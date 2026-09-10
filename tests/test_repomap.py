@@ -17,6 +17,24 @@ class TestRepoMap(FixtureRepoMixin, unittest.TestCase):
                                    focus={"pkg/core.py"})
         self.assertNotIn("pkg/core.py:", out)
 
+    def test_mention_pulls_its_neighborhood(self):
+        # Two unrelated clusters; mentioning one must fill the map with it.
+        for i in range(3):
+            (self.tmp / f"far{i}.py").write_text(
+                "from pkg.core import Engine\n"
+                f"def far_user_{i}():\n    return Engine()\n")
+        (self.tmp / "tank.py").write_text(
+            "class Tank:\n    pass\n\ndef fill_tank():\n    return Tank()\n")
+        (self.tmp / "pump.py").write_text(
+            "from tank import Tank, fill_tank\n"
+            "def run_pump():\n    fill_tank()\n    return Tank()\n")
+        indexer.index_repo(self.tmp, self.store)
+        out = repomap.generate_map(self.store, budget=40, mentions={"Tank"})
+        self.assertIn("tank.py:", out)
+        self.assertNotIn("pkg/core.py:", out)
+        default = repomap.generate_map(self.store, budget=40)
+        self.assertIn("pkg/core.py:", default)
+
     def test_repo_map_budget(self):
         out = repomap.generate_map(self.store, budget=48)
         self.assertLessEqual(textutil.estimate_tokens(out), 64)

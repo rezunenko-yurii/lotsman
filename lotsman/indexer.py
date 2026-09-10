@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from lotsman.store import Store
 DB_RELPATH = ".lotsman/index.db"
 
 # Bump when extraction/schema semantics change: forces a clean full reindex.
-INDEX_VERSION = "3"
+INDEX_VERSION = "4"
 
 
 @dataclass
@@ -25,6 +26,8 @@ class IndexResult:
     unchanged: int = 0
     errors: list[str] = field(default_factory=list)
     seconds: float = 0.0
+    # lang -> reason, for indexed languages whose grammar failed to load.
+    degraded: dict[str, str] = field(default_factory=dict)
 
 
 MAX_LINE_LEN = 1000  # no human writes lines this long
@@ -54,12 +57,26 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
     version_changed = store.get_meta("index_version") != INDEX_VERSION
     wiring_changed = (stored_wiring_sha != wiring_sha
                       and (stored_wiring_sha or wiring_sha))
-    if version_changed or wiring_changed:
+    records = scanner.scan(root)
+    result.scanned = len(records)
+    # A grammar that breaks (or recovers) changes what extraction produces:
+    # rebuild instead of mixing tree-sitter and fallback rows. The check
+    # compiles every query, so its result is reused while the environment
+    # fingerprint stays the same.
+    langs = {r.lang for r in records}
+    fingerprint = extract.grammar_fingerprint(langs)
+    stored_degraded = json.loads(store.get_meta("degraded") or "{}")
+    if store.get_meta("grammar_fingerprint") == fingerprint:
+        result.degraded = stored_degraded
+    else:
+        result.degraded = extract.grammar_failures(langs)
+    degraded_changed = set(result.degraded) != set(stored_degraded)
+    if version_changed or wiring_changed or degraded_changed:
         store.wipe()
     store.set_meta("index_version", INDEX_VERSION)
     store.set_meta("wiring_sha", wiring_sha)
-    records = scanner.scan(root)
-    result.scanned = len(records)
+    store.set_meta("grammar_fingerprint", fingerprint)
+    store.set_meta("degraded", json.dumps(result.degraded, ensure_ascii=False))
     known = store.known_files()
     seen_paths = set()
 
@@ -86,18 +103,21 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
             continue
         try:
             if _looks_generated(data):
-                symbols, idents = [], Counter()  # record the file, index nothing
+                symbols, idents, lines = [], Counter(), {}  # record the file only
             else:
                 symbols = extract.extract_symbols(rec.lang, data)
-                idents = extract.extract_refs(rec.lang, data)
-                idents.update(wiring.apply(patterns, data))
+                idents, lines = extract.extract_refs_with_lines(rec.lang, data)
+                wired, wired_lines = wiring.apply_with_lines(patterns, data)
+                idents.update(wired)
+                for name, extra in wired_lines.items():
+                    lines[name] = sorted(set(lines.get(name, ())) | extra)
         except Exception as e:  # a single bad file must not kill the index run
             result.errors.append(f"{rec.path}: {e}")
             continue
         store.upsert_file(
             rec.path, sha, rec.mtime, rec.size, rec.lang,
             [(s.name, s.kind, s.line, s.end_line, s.signature) for s in symbols],
-            idents)
+            idents, lines)
         if prev is None:
             result.added += 1
         else:

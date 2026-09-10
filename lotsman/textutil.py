@@ -39,6 +39,12 @@ update upper values write
 """.split())
 
 
+def is_generic_name(name: str) -> bool:
+    """`Add`, `Count`, `Update`, `Window`: kept for `refs`, but no ranking or
+    impact signal — every file "uses" them."""
+    return name.lower() in STOPWORDS
+
+
 def split_ident(name: str) -> list[str]:
     """Split an identifier into lowercase subtokens: fooBarBaz -> [foo, bar, baz]."""
     parts: list[str] = []

@@ -29,9 +29,15 @@ class TestCLI(FixtureRepoMixin, unittest.TestCase):
         self.assertNotIn("qualified", unqualified)
         self.assertEqual(unqualified["confidence"]["resolution"], "name-based")
 
+        self.assertEqual(unqualified["references"][0]["lines"], [1, 6, 7])
+        self.assertFalse(unqualified["ambiguous"])
+
         qualified = run_refs_json("Tank.drain")
         self.assertEqual(qualified["qualified"], ["Tank", "drain"])
         self.assertEqual(qualified["confidence"]["resolution"], "name-based")
+        self.assertEqual(qualified["references"],
+                         [{"path": "pkg/user1.py", "count": 1, "lines": [2],
+                           "same_line": True}])
 
     def test_cli_commands_run(self):
         for argv in (

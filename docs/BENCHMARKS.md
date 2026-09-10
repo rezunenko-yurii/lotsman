@@ -38,17 +38,19 @@ claims need repeated agent A/B runs: same task, same model, with/without
 Lotsman, measuring tool calls, files read, tokens, elapsed time, correctness,
 test choice, and whether the agent had to backtrack.
 
-## v1.5 reference run
+## v1.6 reference run
 
-Rerun on 2026-07-08 with lotsman 1.5.0, Python 3.14 and the `[embeddings]`
-extra installed. All quality gates passed.
+Rerun on 2026-09-10 with lotsman 1.6.0, Python 3.14 and the `[embeddings]`
+extra installed; the five harnesses ran concurrently, so timings are upper
+bounds. All quality gates passed, and every scenario's token savings are
+unchanged from v1.5. The C# / Unity recall run is in its own section below.
 
 | Corpus | Cold index | Warm map | Search | Scenario savings |
 |---|---:|---:|---:|---:|
-| Django 5.2 | 3.79 s | 0.07 s | 0.54 s | 24x |
-| WordPress 7.0 | 2.12 s | 0.02 s | 0.13 s | 51x |
-| Vite v5.4.11 | 0.48 s | 0.00 s | 0.03 s | 14x |
-| Gin v1.10.0 | 0.16 s | 0.00 s | 0.01 s | 7x |
+| Django 5.2 | 3.73 s | 0.07 s | 0.50 s | 24x |
+| WordPress 7.0 | 2.52 s | 0.02 s | 0.13 s | 51x |
+| Vite v5.4.11 | 0.53 s | 0.00 s | 0.03 s | 14x |
+| Gin v1.10.0 | 0.18 s | 0.00 s | 0.01 s | 7x |
 | ripgrep 14.1.1 | 0.37 s | 0.00 s | 0.04 s | 31x |
 
 Important interpretation: the token-savings scenarios already modeled narrow
@@ -71,7 +73,7 @@ quality across several repo shapes.
 | Gin v1.10.0 | Go web framework | Go defs/refs, small-file framework layout, package-level APIs | implemented, quality-gated |
 | ripgrep 14.1.1 | Rust workspace/CLI | Rust traits/structs/functions, multi-crate workspace, long flag/search files | implemented, quality-gated |
 | Java service/library | Java backend | classes/interfaces, package layout, annotation-heavy code | planned |
-| C# / Unity project | C# game/tooling repo | method-heavy classes, serialized references that lotsman cannot see | live-session evidence; reproducible public corpus still needed |
+| C# / Unity project | C# game/tooling repo | static classes, enums, generics, attributes; serialized references that lotsman cannot see | `bench_unity.py`, quality-gated on a private corpus; public corpus still needed |
 
 WordPress release archives include bundled libraries and large JS/admin assets.
 The WordPress harness writes a fixture-local `.lotsmanignore` so the measured
@@ -81,18 +83,18 @@ projects too.
 
 ## Django Reference Run
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.6.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (2272 files, ~41k symbols) | 3.79 s |
-| Embedding pass (all symbols) | 1.57 s |
-| No-op reindex | 0.11 s |
+| Cold index (2272 files, ~41k symbols) | 3.73 s |
+| Embedding pass (all symbols) | 1.27 s |
+| No-op reindex | 0.14 s |
 | Reindex after a 1-file edit | 0.13 s |
-| `map` — cold (computes PageRank) | 0.97 s |
+| `map` — cold (computes PageRank) | 1.01 s |
 | `map` — warm (rank cache) | **0.07 s** |
-| `search` (hybrid) | 0.54 s |
+| `search` (hybrid) | 0.50 s |
 
 ## Quality gates
 
@@ -137,15 +139,15 @@ Source: WordPress **7.0** from the official release zip
 bundled dependencies/admin JS with `.lotsmanignore` and measures the PHP-core
 navigation surface.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.6.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (839 files, ~9k symbols) | 2.12 s |
-| Embedding pass (all symbols) | 1.45 s |
+| Cold index (839 files, ~9k symbols) | 2.52 s |
+| Embedding pass (all symbols) | 0.60 s |
 | No-op reindex | 0.05 s |
-| Reindex after a 1-file edit | 0.10 s |
+| Reindex after a 1-file edit | 0.11 s |
 | `map` — cold (computes PageRank) | 0.35 s |
 | `map` — warm (rank cache) | **0.02 s** |
 | `search` (hybrid) | 0.13 s |
@@ -179,16 +181,16 @@ The scenario models an agent locating WordPress text-field sanitization:
 Source: Vite **v5.4.11**, shallow-cloned from
 `https://github.com/vitejs/vite.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.6.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (1131 files, ~2.2k symbols) | 0.48 s |
+| Cold index (1131 files, ~2.2k symbols) | 0.53 s |
 | Embedding pass (all symbols) | 0.46 s |
-| No-op reindex | 0.04 s |
-| Reindex after a 1-file edit | 0.05 s |
-| `map` — cold (computes PageRank) | 0.09 s |
+| No-op reindex | 0.05 s |
+| Reindex after a 1-file edit | 0.06 s |
+| `map` — cold (computes PageRank) | 0.10 s |
 | `map` — warm (rank cache) | **0.00 s** |
 | `search` (hybrid) | 0.03 s |
 
@@ -222,15 +224,15 @@ The scenario models an agent locating Vite dev-server creation:
 Source: Gin **v1.10.0**, shallow-cloned from
 `https://github.com/gin-gonic/gin.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.6.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
-| Cold index (92 files, ~1.2k symbols) | 0.16 s |
-| Embedding pass (all symbols) | 0.53 s |
+| Cold index (92 files, ~1.2k symbols) | 0.18 s |
+| Embedding pass (all symbols) | 0.69 s |
 | No-op reindex | 0.02 s |
-| Reindex after a 1-file edit | 0.02 s |
+| Reindex after a 1-file edit | 0.03 s |
 | `map` — cold (computes PageRank) | 0.01 s |
 | `map` — warm (rank cache) | **0.00 s** |
 | `search` (hybrid) | 0.01 s |
@@ -265,16 +267,16 @@ The scenario models an agent locating Gin's `Context.JSON` response path:
 Source: ripgrep **14.1.1**, shallow-cloned from
 `https://github.com/BurntSushi/ripgrep.git`.
 
-Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.5.0, `[embeddings]`
+Machine: MacBook (Apple Silicon), Python 3.14, lotsman 1.6.0, `[embeddings]`
 extra installed.
 
 | Operation | Time |
 |---|---|
 | Cold index (101 files, ~3.2k symbols) | 0.37 s |
-| Embedding pass (all symbols) | 0.56 s |
+| Embedding pass (all symbols) | 0.49 s |
 | No-op reindex | 0.02 s |
 | Reindex after a 1-file edit | 0.02 s |
-| `map` — cold (computes PageRank) | 0.02 s |
+| `map` — cold (computes PageRank) | 0.03 s |
 | `map` — warm (rank cache) | **0.00 s** |
 | `search` (hybrid) | 0.04 s |
 
@@ -301,6 +303,67 @@ The scenario models an agent locating ripgrep's search worker/printer flow:
 | whole files | ~51,200 |
 | **Savings** | **31×** |
 
+## C# / Unity Reference Recall
+
+`benchmarks/bench_unity.py --root PATH/Assets` measures what `refs` finds on
+any Unity project. For every C# declaration with a corpus-unique name it
+compares the files `refs` reports with `grep -rlw` over the same files (the
+indexed set, `.lotsmanignore` applied), and with a fairer "code" baseline:
+grep after blanking comments, strings, `#` directives and namespace names via
+tree-sitter. Defining files are excluded on both sides, like `refs` does. The
+index goes to a scratch directory; the corpus is only read.
+
+Run 2026-09-10 on a private Unity project (1297 C# files after skipping `~`
+folders; 1388 before), Python 3.14. Recall = files found / "code" files:
+
+| Kind | Symbols | grep | code | Before | After |
+|---|---:|---:|---:|---:|---:|
+| static class | 272 | 1440 | 1245 | 0.5% | 98.9% |
+| enum | 114 | 591 | 580 | 25.4% | 93.6% |
+| class | 722 | 2883 | 2621 | 73.0% | 99.5% |
+| interface | 86 | 447 | 438 | 88.2% | 100% |
+| struct | 46 | 142 | 128 | 75.8% | 100% |
+| delegate | 8 | 13 | 13 | 0% | 100% |
+| property | 421 | 2621 | 1945 | 7.3% | 89.4% |
+| method | 858 | 3035 | 2711 | 78.0% | 99.0% |
+
+Precision against the "code" baseline is 100% for every kind. Symbols the
+independent review flagged: `ExLog` 0 → 207 of 207 files, `UiClasses`
+0 → 55/55, `WindowDisplayMode` 9 → 21/21, `WindowsManager` 13 → 14/14.
+
+What the residue is (checked by hand with `--explain`):
+
+- grep-only hits (grep minus "code"): doc comments and `<see cref>`,
+  commented-out code, string keys like `"ExLog.NodePath"` — not references;
+- enum / static class misses: same-named declarations of other entities
+  (an `ExifTag` enum member named like another enum, a `const string` named
+  like a static class) — declarations, not uses;
+- property misses: camelCase properties (`name`, `data`, `state`); a bare
+  camelCase identifier is indistinguishable from a local by name, so it is
+  not counted (by design).
+
+Gates: static class, enum, class, interface and struct recall ≥ 90%.
+
+Map section of the same run: the default map no longer contains the flagged
+BCL/Unity collisions (`TryGetValue`, `Action`, `Empty`, `GetBytes`,
+`IsNullOrEmpty`, `ToArray`, `Exception`; `Random` remains — Unity's
+`Random.Range` names both halves of the repo's `Range.Random`) and no files
+under `~` folders; in `map --mention WindowsManager`, direct neighbors of the
+type went from 9 of 44 files to 13 of 33 (most of the rest are its
+two-hop ExWindows neighborhood).
+
+Output size and latency on the same corpus:
+
+| | Before | After |
+|---|---:|---:|
+| `refs ExLog` (20 files shown) | 179 chars (0 files) | 2,425 chars, 207 files / 731 lines |
+| `refs WindowsManager` | 1,194 chars (no lines) | 1,326 chars with lines |
+| `outline`, all C# files, vs reading them | 8.2× smaller | 6.7× smaller (fields/events listed) |
+| `outline` of a 2.3k-line DTO file | 10.6k chars | 15.3k chars (268 fields as 36 name lines) |
+| `slice` of one method, 360-line file | 3.5k chars | 1.0k chars |
+| `refs` / `outline` wall time (process, incl. refresh) | 0.13 s | 0.13 s |
+| cold index | 2.2 s | 2.5 s |
+
 ## Early Recommendations
 
 These are recommendations from the current corpus, not final language rankings.
@@ -316,7 +379,7 @@ These are recommendations from the current corpus, not final language rankings.
 | Reflection/DI/serialized-reference-heavy systems | Useful for candidate discovery only | `refs`/`impact` are name-based, not runtime/type complete |
 
 Before making stronger claims by language, add at least: a Java service and a
-public C# project with tests. Each needs both speed metrics and quality gates,
+public C# project with tests (`bench_unity.py` runs on any Unity `Assets/`). Each needs both speed metrics and quality gates,
 not just token savings.
 
 ## Live behavioral test

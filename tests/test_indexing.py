@@ -44,6 +44,19 @@ class TestIndexing(FixtureRepoMixin, unittest.TestCase):
         names = {s.name for s in self.store.all_symbols()}
         self.assertIn("prepare_fuex", names)
 
+    def test_old_index_rebuilds_with_lines(self):
+        # An index written before reference lines existed: no `lines` column,
+        # older INDEX_VERSION. Opening it must migrate and rebuild on its own.
+        self.store.conn.execute("ALTER TABLE idents DROP COLUMN lines")
+        self.store.set_meta("index_version", "3")
+        self.store.close()
+        self.store = indexer.open_store(self.tmp)
+        res = indexer.index_repo(self.tmp, self.store)
+        self.assertEqual(res.added, 3)  # full rebuild, no manual step
+        sites = {p: lines for p, _, lines in
+                 self.store.reference_sites("prepare_fuel")}
+        self.assertEqual(sites["pkg/app.py"], [1, 6, 7])
+
     def test_refs_lookup(self):
         refs = dict(self.store.files_referencing("prepare_fuel"))
         self.assertIn("pkg/app.py", refs)

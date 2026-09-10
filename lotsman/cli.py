@@ -9,8 +9,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from lotsman import (embed, indexer, querylog, refsview, repomap,
-                     search as search_mod, sliceview)
+from lotsman import (embed, extract, indexer, outlineview, querylog, refsview,
+                     repomap, search as search_mod, sliceview)
 from lotsman.store import Store
 
 
@@ -41,19 +41,28 @@ def _open(root: Path, auto_index: bool = True) -> Store:
         res = indexer.index_repo(root, store)
         print(f"[lotsman] first-time index: {res.added} files in {res.seconds:.1f}s",
               file=sys.stderr)
+        _warn_degraded(res)
         return store
     store = Store(db)
     res = indexer.index_repo(root, store)
     if res.added or res.updated or res.removed:
         print(f"[lotsman] index refreshed: +{res.added} ~{res.updated} "
               f"-{res.removed}", file=sys.stderr)
+    _warn_degraded(res)
     return store
+
+
+def _warn_degraded(res) -> None:
+    if res.degraded:
+        print(f"[lotsman] {extract.degraded_warning(res.degraded)}",
+              file=sys.stderr)
 
 
 def cmd_index(args) -> int:
     root = _root(args)
     store = indexer.open_store(root)
     res = indexer.index_repo(root, store, verify=args.verify)
+    _warn_degraded(res)
     embedded = 0
     if not args.no_embed:
         t0 = time.monotonic()
@@ -125,8 +134,7 @@ def cmd_outline(args) -> int:
         print(f"(no symbols indexed for {args.file})")
         return 1
     print(f"{args.file}:")
-    for r in rows:
-        print(f"{r.line:5}-{r.end_line:<5} [{r.kind}] {r.signature}")
+    print("\n".join(outlineview.outline_rows(rows)))
     return 0
 
 
@@ -157,19 +165,19 @@ def cmd_defs(args) -> int:
 def cmd_refs(args) -> int:
     root = _root(args)
     store = _open(root)
-    parts = [part for part in args.name.split(".") if part]
-    member = parts[-1] if parts else args.name
-    defs = store.symbols_named(member)
-    if len(parts) >= 2:
-        refs = store.files_referencing_all(parts)
-    else:
-        refs = store.files_referencing(member)
-    def_paths = {d.path for d in defs}
-    ref_only = [(p, c) for p, c in refs if p not in def_paths]
     if args.json:
+        result = refsview.collect_refs(store, args.name)
+        parts = [part for part in args.name.split(".") if part]
+        refs = result.refs if result else []
         payload = {
-            "definitions": [asdict(d) for d in defs],
-            "references": [{"path": p, "count": c} for p, c in ref_only],
+            "definitions": [asdict(d) for d in result.defs] if result else [],
+            "references": [
+                {"path": s.path, "count": s.count, "lines": s.lines}
+                | ({"same_line": s.same_line} if len(parts) >= 2 else {})
+                for s in refs],
+            # Name shared by definitions in several files: references may
+            # belong to any of them.
+            "ambiguous": bool(result and result.def_files > 1),
             # JSON must carry the same honesty as the text output — agents
             # binding to this shape must see the confidence level.
             "confidence": REFS_CONFIDENCE,

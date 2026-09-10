@@ -1,4 +1,7 @@
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
 from helpers import FixtureRepoMixin
 from lotsman import impact, indexer
@@ -46,6 +49,43 @@ class TestImpact(FixtureRepoMixin, unittest.TestCase):
         out = impact.generate_impact(self.store, ["pkg/core.py"], tests_only=True)
         self.assertIn("test_core.py", out)
         self.assertNotIn("consumer.py", out)
+
+
+class TestImpactCSharpMembers(unittest.TestCase):
+    """`Label` on one class must not count every UI Toolkit `Label` user as
+    impacted — but such files are listed apart, not dropped."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="lotsman_test_"))
+        (self.tmp / "Rail.cs").write_text(
+            "public sealed class RailItem {\n"
+            "    public string Label;\n"
+            "}\n"
+            "public static class RailExt {\n"
+            "    public static int Width(this RailItem item) => 1;\n"
+            "}\n")
+        (self.tmp / "User.cs").write_text(
+            "class User { void Run(RailItem r) { var s = r.Label; } }\n")
+        (self.tmp / "Other.cs").write_text(
+            "class Other { void Run(Label l) { var s = l.Label; } }\n")
+        (self.tmp / "Ext.cs").write_text(
+            "class Ext { int Run(object o) => o.Width(); }\n")
+        self.store = indexer.open_store(self.tmp)
+        indexer.index_repo(self.tmp, self.store)
+
+    def tearDown(self):
+        self.store.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_member_uses_split_direct_and_name_only(self):
+        out = impact.generate_impact(self.store, ["Rail.cs"])
+        direct, _, weak = out.partition("Name-only matches")
+        self.assertIn("User.cs — uses", direct)
+        self.assertNotIn("Other.cs", direct)
+        self.assertIn("Other.cs — uses Label", weak)
+        self.assertIn("(+2x name-only)", out)  # type `Label` + `.Label`
+        # extension methods: callers never name the static class
+        self.assertIn("Ext.cs — uses Width", direct)
 
 
 if __name__ == "__main__":

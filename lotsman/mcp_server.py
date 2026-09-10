@@ -11,8 +11,9 @@ import sys
 import time
 from pathlib import Path
 
-from lotsman import (__version__, embed, indexer, querylog, refsview, repomap,
-                     search as search_mod, sliceview)
+from lotsman import (__version__, embed, extract, indexer, outlineview,
+                     querylog, refsview, repomap, search as search_mod,
+                     sliceview)
 
 PROTOCOL_VERSION = "2024-11-05"
 REFRESH_INTERVAL = 10.0  # seconds between incremental reindex checks
@@ -81,8 +82,9 @@ TOOLS = [
     {
         "name": "slice",
         "description": (
-            "Full body of one symbol plus a signature-only skeleton of the "
-            "rest of the file. Use instead of reading a whole file when one "
+            "Full body of one symbol plus its local skeleton: enclosing "
+            "types and the nearest sibling signatures (use outline for the "
+            "whole file). Use instead of reading a whole file when one "
             "symbol matters."),
         "inputSchema": {
             "type": "object",
@@ -121,8 +123,11 @@ TOOLS = [
     },
     {
         "name": "refs",
-        "description": ("Who uses a symbol: definitions plus referencing files "
-                        "with use counts. Use before changing a signature."),
+        "description": ("Who uses a symbol: definitions plus referencing "
+                        "files with line numbers (`path:12,40`). `Type.Member` "
+                        "narrows to lines naming both. Name-based: flags names "
+                        "defined in several files. Use before changing a "
+                        "signature."),
         "inputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string"},
@@ -138,13 +143,14 @@ class McpServer:
         self.root = root
         self.store = indexer.open_store(root)
         self._last_refresh = 0.0
+        self._degraded: dict[str, str] = {}
 
     def _refresh(self) -> None:
         """Keep the index fresh; throttled, incremental, so nearly free."""
         now = time.monotonic()
         if now - self._last_refresh < REFRESH_INTERVAL:
             return
-        indexer.index_repo(self.root, self.store)
+        self._degraded = indexer.index_repo(self.root, self.store).degraded
         embed.embed_missing(self.store)
         self._last_refresh = now
 
@@ -172,9 +178,7 @@ class McpServer:
         rows = self.store.symbols_in_file(args["file"])
         if not rows:
             return f"(no symbols indexed for {args['file']})"
-        lines = [f"{args['file']}:"]
-        lines += [f"{r.line:5}-{r.end_line:<5} [{r.kind}] {r.signature}" for r in rows]
-        return "\n".join(lines)
+        return "\n".join([f"{args['file']}:", *outlineview.outline_rows(rows)])
 
     def _tool_defs(self, args: dict) -> str:
         rows = self.store.symbols_named(args["name"])
@@ -259,6 +263,8 @@ class McpServer:
         querylog.log(self.root, name, args, text)
         if len(text) > MAX_OUTPUT_CHARS:
             text = text[:MAX_OUTPUT_CHARS] + "\n… (truncated)"
+        if self._degraded:  # agents read tool output, not the server's stderr
+            text += "\n" + extract.degraded_warning(self._degraded)
         return self._result(msg_id, {
             "content": [{"type": "text", "text": text}],
             "isError": False,

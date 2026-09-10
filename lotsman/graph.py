@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 
-from lotsman.textutil import is_well_named
+from lotsman.textutil import is_generic_name, is_well_named
 
 DAMPING = 0.85
 MAX_ITER = 60
@@ -17,6 +17,14 @@ TOL = 1e-8
 # Meaningless on small repos where any name easily spans 25% of files.
 MAX_REF_FRACTION = 0.25
 MIN_FILES_FOR_REF_CUTOFF = 20
+# A member reference from a file that never mentions the member's owning type
+# is most likely a same-named API on a foreign type: `dict.TryGetValue(...)`
+# is not a use of `FilesRegistry.TryGetValue`. Such edges keep this fraction
+# of their weight: on a Unity corpus 0.1 still let `IsNullOrEmpty`, `Random`,
+# `Action` top the map by sheer call volume; 0 removed them and left the
+# architecture (ExLog, NodeContext, IState...). C# only — measured there.
+FOREIGN_MEMBER_FACTOR = 0.0
+OWNER_GATED_SUFFIXES = (".cs",)
 
 
 def _ident_multiplier(ident: str, mentions: set[str]) -> float:
@@ -34,6 +42,7 @@ def build_edges(
     definitions: dict[str, set[str]],
     references: dict[str, Counter],
     mentions: set[str] | None = None,
+    owners: dict[tuple[str, str], set[str]] | None = None,
 ) -> dict[str, dict[str, list[tuple[str, float]]]]:
     """edges[src][dst] = [(ident, weight), ...]; src references ident defined in dst.
 
@@ -41,20 +50,29 @@ def build_edges(
     - idf penalizes names referenced by most of the repo (generic `value`,
       `request`, ... carry no navigation signal — lexical counting is noisy,
       so this matters more than in AST-reference schemes);
-    - splitting across definers penalizes names defined in many places.
+    - splitting across definers penalizes names defined in many places;
+    - owners[(ident, dst)] = types enclosing ident in dst: if src mentions
+      none of them, the edge is scaled by FOREIGN_MEMBER_FACTOR.
+    Generic names (`Add`, `Window`) form no edges unless mentioned.
     """
     mentions = mentions or set()
-    n_files = max(len(references), 1)
+    owners = owners or {}
+
+    def signal(ident: str) -> bool:
+        return ident in mentions or not is_generic_name(ident)
+
+    n_files = max(sum(1 for counts in references.values()
+                      if any(signal(i) for i in counts)), 1)
     ref_file_count: Counter = Counter()
     for counts in references.values():
-        ref_file_count.update(counts.keys())
+        ref_file_count.update(i for i in counts if signal(i))
 
     edges: dict[str, dict[str, list[tuple[str, float]]]] = defaultdict(
         lambda: defaultdict(list))
     for src, counts in references.items():
         for ident, num in counts.items():
             definers = definitions.get(ident)
-            if not definers:
+            if not definers or not signal(ident):
                 continue
             rf = ref_file_count[ident]
             if (n_files >= MIN_FILES_FOR_REF_CUTOFF
@@ -67,7 +85,13 @@ def build_edges(
             for dst in definers:
                 if dst == src:
                     continue
-                edges[src][dst].append((ident, weight))
+                need = owners.get((ident, dst))
+                if need and need.isdisjoint(counts):
+                    if FOREIGN_MEMBER_FACTOR <= 0:
+                        continue
+                    edges[src][dst].append((ident, weight * FOREIGN_MEMBER_FACTOR))
+                else:
+                    edges[src][dst].append((ident, weight))
     return edges
 
 

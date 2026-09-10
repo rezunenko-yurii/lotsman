@@ -52,16 +52,25 @@ def load(root: Path) -> tuple[list[re.Pattern[str]], list[str]]:
 
 
 def apply(patterns: list[re.Pattern[str]], data: bytes) -> Counter:
+    return apply_with_lines(patterns, data)[0]
+
+
+def apply_with_lines(patterns: list[re.Pattern[str]], data: bytes
+                     ) -> tuple[Counter, dict[str, set[int]]]:
+    """(name -> hit count, name -> 1-based lines of the hits)."""
     if not patterns:
-        return Counter()
+        return Counter(), {}
     text = data.decode("utf-8", errors="ignore")
     hits: Counter = Counter()
+    lines: dict[str, set[int]] = {}
     for pat in patterns:
         for match in pat.finditer(text):
             name = match.group(1)
             if name:
                 hits[name] += 1
-    return hits
+                lines.setdefault(name, set()).add(
+                    text.count("\n", 0, match.start(1)) + 1)
+    return hits, lines
 
 
 def config_sha(root: Path) -> str:

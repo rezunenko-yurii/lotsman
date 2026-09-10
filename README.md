@@ -23,6 +23,7 @@ candidates to inspect; it does not prove complete semantic truth.
 - [Like You Are 5](#like-you-are-5)
 - [Why Agents Need It](#why-agents-need-it)
 - [Should You Use It?](#should-you-use-it)
+- [What Changed In 1.6](#what-changed-in-16-c--unity)
 - [What Changed In 1.5](#what-changed-in-15)
 - [Install The Command](#install-the-command)
 - [Quick Start](#quick-start)
@@ -84,6 +85,32 @@ left for reasoning about code.**
 
 Lotsman is best as an agent navigation layer. It complements grep, LSPs and
 tests; it does not replace them.
+
+## What Changed In 1.6: C# / Unity
+
+An independent review on a Unity project found `refs` blind to whole classes
+of C# usage (0 of 221 files for a static class). Measured with
+`benchmarks/bench_unity.py` — recall of `refs` against `grep -rlw` with
+comments and strings stripped:
+
+| Declaration kind | Before | After |
+|---|---:|---:|
+| static class | 0.5% | 98.9% |
+| enum | 25% | 94% |
+| class | 73% | 99.5% |
+| interface / struct / delegate | 88% / 76% / 0% | 100% |
+| method | 78% | 99% |
+| property | 7% | 89% (camelCase properties skipped by design) |
+
+Also: `refs` prints `file:line` grouped per file and flags names defined in
+several files; C# signatures no longer stop at `[Test]`; `outline` lists
+fields and events; the map drops members that only collide with BCL/Unity
+API names and `--mention` really re-centers it; `slice` returns local context
+instead of the whole-file skeleton; `impact` lists name-only matches apart;
+a grammar that fails to load is reported instead of silently degrading. The
+index rebuilds itself on first run. The Django, WordPress, Vite, Gin and
+ripgrep quality gates still pass with unchanged token savings. Details:
+[CHANGELOG.md](CHANGELOG.md).
 
 ## What Changed In 1.5
 
@@ -284,7 +311,7 @@ the agent should only see the next useful piece.
 | `search "query"` | Candidate definitions by name/meaning | Raw grep lines or bodies | You need likely implementation locations |
 | `outline file.py` | Symbols and line ranges in one file | File contents | You want to choose a line range |
 | `defs NAME` | Definitions of a symbol name | Usage sites | You need declarations |
-| `refs NAME` | Name-based usage candidates | Type-resolved proof | You need places to inspect |
+| `refs NAME` | Name-based usage candidates as `path:line,line` | Type-resolved proof | You need places to inspect |
 | `impact files...` | Candidate affected files/symbols | Complete blast radius | You need a test/check shortlist |
 
 Map budget is output budget, not index depth. `map --budget 5000` gives the
@@ -317,18 +344,23 @@ speedup guarantee.
 | Gin v1.10.0 | Go web framework | 7x |
 | ripgrep 14.1.1 | Rust workspace/CLI | 31x |
 
-Current v1.5 reference run, rerun on 2026-07-08:
+Current v1.6 reference run, rerun on 2026-09-10:
 
 | Corpus | Cold index | Warm map | Search | Quality gates |
 |---|---:|---:|---:|---|
-| Django 5.2 | 3.79 s | 0.07 s | 0.54 s | PASS |
-| WordPress 7.0 | 2.12 s | 0.02 s | 0.13 s | PASS |
-| Vite v5.4.11 | 0.48 s | 0.00 s | 0.03 s | PASS |
-| Gin v1.10.0 | 0.16 s | 0.00 s | 0.01 s | PASS |
+| Django 5.2 | 3.73 s | 0.07 s | 0.50 s | PASS |
+| WordPress 7.0 | 2.52 s | 0.02 s | 0.13 s | PASS |
+| Vite v5.4.11 | 0.53 s | 0.00 s | 0.03 s | PASS |
+| Gin v1.10.0 | 0.18 s | 0.00 s | 0.01 s | PASS |
 | ripgrep 14.1.1 | 0.37 s | 0.00 s | 0.04 s | PASS |
 
 Live evidence: in a Claude Code session on a 2008-file Unity project, an agent
 answered an impact question with 4 lotsman calls and one 15-line file read.
+
+C# reference recall is measured by `benchmarks/bench_unity.py` on any Unity
+`Assets/` folder (the reference run uses a private 1.3k-file project, so the
+corpus itself is not published): per declaration kind, `refs` against
+`grep -rlw` with comments, strings and namespace lines removed.
 
 The honest reading:
 
@@ -355,6 +387,21 @@ Lotsman works best when code has stable named symbols in ordinary source files.
 
 Practical rule: keep your index broad, but keep your corpus clean. Put vendor,
 generated, minified and asset-heavy trees in `.lotsmanignore`.
+
+### C# / Unity Notes
+
+- `refs` follows C# naming conventions: every PascalCase identifier in code
+  counts (types, static receivers like `ExLog.Info`, enum values, constants,
+  generic arguments, `typeof`/`is`/`as`/casts/`nameof`, attribute arguments);
+  camelCase identifiers count only as members (`x.health`), never as bare
+  names — they look exactly like locals and parameters.
+- `[Foo]` counts as a use of `FooAttribute`.
+- `outline` lists fields and events (runs collapse to `[fields] a, b, c`);
+  they are not searched or ranked.
+- Folders Unity does not compile (`Samples~/`, dot-folders) are skipped when
+  the root is a Unity project or its `Assets/` folder.
+- Serialized references in scenes, prefabs and ScriptableObjects are
+  invisible — they live in YAML assets, not in code.
 
 ### Mixed-Language Repos
 
@@ -470,9 +517,9 @@ embeddings via `model2vec`. No request leaves your machine.
 | `lotsman map [--budget N] [--focus F] [--mention X]` | return a token-budgeted repo map |
 | `lotsman search "query" [--mode auto|hybrid|bm25|vector]` | find likely symbols/files by meaning/name |
 | `lotsman outline FILE` | show symbol ranges in one file |
-| `lotsman slice FILE TARGET` | return one symbol body plus surrounding file skeleton |
+| `lotsman slice FILE TARGET` | return one symbol body plus its local skeleton (enclosing types, nearest siblings) |
 | `lotsman defs NAME` | show definitions of a symbol |
-| `lotsman refs NAME` | show name-based reference candidates; `Class.Method` narrows method lookups |
+| `lotsman refs NAME [-k N]` | show name-based reference candidates as `file:line`, N files (default 20); flags names defined in several files; `Class.Method` narrows method lookups |
 | `lotsman impact [FILES...] [--since H] [--tests]` | show changed symbols, likely affected files, and optional test candidates |
 | `lotsman doctor [--json] [--fail-on-warn]` | report language, embedding, freshness and config health |
 | `lotsman report` | summarize opt-in query telemetry from the local query log |
@@ -488,7 +535,11 @@ Freshness:
 ## Limits
 
 - `refs` and `impact` are name-based heuristics, not type-resolved proof.
-- Same-named methods across classes can blur together.
+- Same-named methods across classes can blur together; `refs` says so when a
+  name has several definitions, and `Class.Method` narrows it.
+- C#: camelCase identifiers (locals, private fields, lowercase properties)
+  are not counted as bare references. Owner-type checks in `map` and
+  `impact` (a member counts where its type is named) are C#-only so far.
 - PHP references are lexical today.
 - Reflection, DI, generated code and serialized scene references can be missed;
   add `.lotsman/wiring.json` patterns when the repo encodes important edges in

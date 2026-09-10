@@ -28,6 +28,23 @@ class TestIgnoreFile(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_unity_hidden_folders_skipped(self):
+        # Unity compiles neither `Samples~/` nor `.hidden/`; neither should we.
+        tmp = Path(tempfile.mkdtemp(prefix="lotsman_unity_"))
+        try:
+            (tmp / "ProjectSettings").mkdir()
+            for d in ("Assets/Scripts", "Assets/Samples~/Demo", "Assets/.draft"):
+                (tmp / d).mkdir(parents=True)
+                (tmp / d / "A.cs").write_text("class A {}\n")
+            from lotsman import scanner
+            self.assertEqual({r.path for r in scanner.scan(tmp)},
+                             {"Assets/Scripts/A.cs"})
+            # Indexing just Assets/ still knows it is a Unity project.
+            self.assertTrue(scanner.is_unity_project(tmp / "Assets"))
+            self.assertFalse(scanner.is_unity_project(tmp / "Assets" / "Scripts"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

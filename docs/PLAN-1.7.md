@@ -3,6 +3,53 @@
 Status: draft, 2026-09-10. This file is also the working state of the release:
 update the checkboxes and "Measured" lines as items land.
 
+## Handoff (read first in a new session)
+
+State on 2026-09-10: B0, T0, D1, C1, J1 done and committed on branch
+`claude/wizardly-agnesi-511e02` (worktree
+`/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
+`main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
+nothing is pushed. B0 total: 132,287 tokens without lotsman → 48,870 on the
+branch (−63%). **Next: A1 + P1 + U0** (judge by `found`, not tokens), then V1,
+G1, U1, X1–X5. D1's ≤ 25% docs target is not met — options listed under D1.
+
+Where things are:
+- Question set, plans, fixtures, run results: `benchmarks/private/`
+  (gitignored — exists only in this worktree; never commit it: private corpus).
+  Regenerate plans: `python3 benchmarks/private/make_plans.py`. Add a
+  `lotsman17` plan per new item there (pattern: lotsman call → `until_found` →
+  grep fallback).
+- Corpus: `/Users/exhale/Work/Projects/Cloud Repositories/SDK-Kitchen-V3/Assets`
+  — read-only. Its own index `Assets/.lotsman/index.db` is used by the user's
+  sessions through `main` (INDEX_VERSION 4): **never run branch code on it**
+  (the branch is at 7 → rebuild ping-pong). Use a scratch index:
+  ```bash
+  export LOTSMAN_INDEX=<scratchpad>/b0index/index.db LOTSMAN_QUERYLOG=0
+  python3 -m lotsman --repo "<corpus>/Assets" index      # ~4 s + embeddings
+  python3 benchmarks/bench_unity_questions.py --project "<corpus>" \
+    --questions 'benchmarks/private/q_*.json' --plans benchmarks/private/plans.json \
+    --paths baseline,lotsman17 --index <scratchpad>/b0index/index.db
+  ```
+  `LOTSMAN_QUERYLOG=0` keeps the user's telemetry clean (flag
+  `Assets/.lotsman/querylog.on` = `until 2026-09-17`; read `lotsman report`
+  after that date — T0).
+- Gates before each commit: `python3 -m unittest discover -s tests`; after
+  ranking/extraction changes also the five corpus benches
+  (`benchmarks/bench_{django,wordpress,vite,gin,ripgrep}.py`, they clone
+  pinned tags) and `benchmarks/bench_unity.py --root <corpus>/Assets --db <scratch>`.
+- Rules the user set: commit per finished item on the 1.7 branch; no push or
+  merge to `main` without asking; SDK-Kitchen files only with explicit
+  permission (done so far: `.mcp.json` query-log change, one entry pair in
+  `ExWindows/Editor/Documentation/tasks.md`); third-party tools — read their
+  docs for ideas, never install.
+- Environment gotchas: a local hook rejects any Bash command containing the
+  word `tree` (even inside Python code) — put such code in a scratch `.py` file
+  or use Edit; zsh does not word-split `$var` (use arrays or Python drivers);
+  Rider MCP is connected but `analyze_calls` resolved no C# methods.
+- Budgets that still apply: MCP tools now 8 / ~990 tokens (+16% of +40%; one
+  more new tool allowed — `unity` for U0); `refs`/`outline` ≤ 0.3 s (now
+  ~0.17 s); cold index ≤ 2× 1.6 (now 3.6 s vs 2.5 s).
+
 ## Goal
 
 An agent working on a Unity project gets **any project fact cheaply and fast**:

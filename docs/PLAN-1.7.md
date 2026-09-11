@@ -5,9 +5,9 @@ update the checkboxes and "Measured" lines as items land.
 
 ## Handoff (read first in a new session)
 
-State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1, X1 and X2 done and
-committed too; **next: X3–X5** (X1/X2 are CLI-only: no MCP tool budget left).
-B0 now 45,960 tokens, found 0.99 (X1/X2 have no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
+State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1, X1, X2 and X3 done
+and committed too; **next: X4, X5** (X1/X2 are CLI-only: no MCP tool budget
+left). B0 now 45,960 tokens, found 0.99 (X1–X3 have no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -594,6 +594,31 @@ project; B0 has no V1 question — the harness cannot seed edits):
 - **X3. Index snapshot**: `lotsman index --export PATH` writes a compressed
   index (stdlib `lzma`/`zlib`) meant for the repo or CI cache; a missing index
   restores from it, then refreshes incrementally.
+
+  Status: **done** (2026-09-11). `lotsman index --export [PATH]`
+  (`lotsman/snapshot.py`): header line `LOTSMAN-SNAPSHOT {json}` (format,
+  index version, embedding model, files) + the SQLite file as a zlib
+  stream (lzma: 13% smaller, 8–14× slower to write — 16.6 s for 47 MB).
+  Export = backup → drop `sig_changes`, mtime := 0 → VACUUM → compress,
+  atomic. `indexer.open_store` restores a missing index from
+  `$LOTSMAN_SNAPSHOT` or `<root>/.lotsman.snapshot` (never over an existing
+  file: hard link = create-if-absent); mtime 0 makes the first refresh hash
+  every file, so an old snapshot re-extracts what changed; rows restored
+  with mtime 0 don't record `sig_changes` (not an edit here). Wrong
+  format / index version / truncated → note on stderr, cold build; other
+  embedding model → vectors dropped, re-embedded. `doctor` has a
+  `snapshot` check. No index change.
+  Measured. Baseline = cold index + embeddings: lotsman 0.2–0.9 s, Chop
+  Chop 2.3–3.1 s, SDK-Kitchen 4.0–5.3 s (46 MB index); the five public
+  corpora ≤ 3.7 s (BENCHMARKS). Restore + refresh: 0.02 / 0.33 / 0.31 s
+  (7–13×); first CLI query on SDK-Kitchen 3.9 s → 0.37 s (and vectors are
+  there, which the cold CLI path skips). Snapshot 1.0 / 2.9 / 21 MB (45–62%
+  of the index), export 0.05 / 0.15 / 1.2 s. `bench_snapshot.py`: restored
+  index == cold index row by row (vectors byte for byte) on all three, and
+  for lotsman snapshots 3 and 14 commits old (+6 ~16 / +23 ~22 files
+  re-extracted; 1.8× / 1.1× — an old snapshot saves little on a small
+  repo, but stays correct). The gain is seconds on these repos; it grows
+  with repo size.
 - **X4. Profiles and cursors**: `--profile compact|full` and a continuation
   cursor for `refs`, `search`, `impact`, `change`; MCP returns `next_cursor`
   (idea from Unity Open MCP) instead of truncating.

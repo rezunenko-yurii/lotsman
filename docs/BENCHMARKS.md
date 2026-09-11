@@ -475,6 +475,27 @@ its script in one hop (110/110), a scene reaches scripts inside instanced
 prefabs in ≤ 2 hops (102/102), the first hop names the method a UnityEvent
 calls (18/18); 1.7 ms per query on a shared graph.
 
+## Index Snapshot (X3)
+
+`benchmarks/bench_snapshot.py`: a missing index restored from a snapshot
+(`lotsman index --export`) against the same index built cold, 2026-09-11.
+"Restored" = decompress + the first refresh (it hashes every file) + embed
+what changed. The gate compares every table row by row (vectors byte for
+byte).
+
+| Corpus | Cold + embeddings | Restored | Snapshot (index) | Export | Equal to cold |
+|---|---:|---:|---:|---:|---|
+| lotsman (81 files) | 0.21 s | 0.02 s | 1.0 MB (1.6) | 0.05 s | yes |
+| lotsman, snapshot 3 commits old | 0.17 s | 0.10 s (+6 ~16) | 0.8 MB | 0.04 s | yes |
+| lotsman, snapshot 14 commits old (1.6.0) | 0.19 s | 0.17 s (+23 ~22) | 0.5 MB | 0.03 s | yes |
+| Chop Chop (3,460 files) | 2.28 s | 0.33 s | 2.9 MB (5.7) | 0.15 s | yes |
+| Private Unity project (4,434 files) | 4.04 s | 0.31 s | 21.0 MB (46.2) | 1.18 s | yes |
+
+First CLI query in a fresh index location on the private project: 3.9 s
+(builds the index, no vectors yet) → 0.37 s (restored, vectors included).
+zlib over lzma: lzma packs 13% smaller but took 16.6 s to write 47 MB
+(zlib 1.2 s) and 1.6 s to read (0.06 s).
+
 ## Early Recommendations
 
 These are recommendations from the current corpus, not final language rankings.

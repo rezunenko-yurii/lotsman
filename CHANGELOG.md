@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Index snapshots: `lotsman index --export [PATH]`.** Writes the index as
+  one compressed file (zlib; default `.lotsman.snapshot` in the root) for a
+  CI cache or the repo. A missing index — fresh clone, new worktree, CI
+  runner — restores from `$LOTSMAN_SNAPSHOT` or `.lotsman.snapshot`, then
+  refreshes: the first run hashes every file and re-extracts what changed
+  since the export, so the result equals a cold index row by row (checked
+  on Chop Chop, SDK-Kitchen and snapshots 3 and 14 commits behind the
+  checkout). First query on SDK-Kitchen 3.9 s → 0.4 s with embeddings
+  already in place; Chop Chop 2.3 s → 0.3 s; snapshot 45% of the index
+  (21 MB for 46 MB). A snapshot of another index format or embedding model
+  is not used as is (the model mismatch re-embeds); `doctor` reports the
+  snapshot. Methods whose signature changed between snapshot and checkout
+  are not taken for edits by `impact`.
 - **`lotsman why A B` — why A depends on B.** The shortest reference path
   between two files, folders, types, `Type.Member`s or Unity assemblies,
   with the names that make each hop and their lines in the source file.

@@ -537,7 +537,7 @@ embeddings via `model2vec`. No request leaves your machine.
 |---|---|
 | `lotsman init [--agent codex|claude|cursor] [--no-index]` | set up agent policy, ignore skeleton, MCP hints, first index |
 | `lotsman update [--agent codex|claude|cursor] [--no-index]` | refresh managed agent artifacts and the index after Lotsman or source changes |
-| `lotsman index [--verify] [--no-embed]` | build/update the index |
+| `lotsman index [--verify] [--no-embed] [--export [PATH]]` | build/update the index; `--export` also writes a compressed snapshot (default `.lotsman.snapshot`) |
 | `lotsman map [--budget N] [--focus F] [--mention X]` | return a token-budgeted repo map |
 | `lotsman search "query" [--mode auto|hybrid|bm25|vector] [--docs N]` | find likely symbols/files by meaning/name, plus N Markdown sections (default 3) |
 | `lotsman outline FILE` | show symbol ranges in one file |
@@ -561,6 +561,14 @@ Freshness:
 - CLI read commands run an incremental refresh before serving results.
 - MCP refreshes are throttled while serving tools.
 - `lotsman index --verify` re-hashes everything when you need a full check.
+- A missing index restores from a snapshot — `$LOTSMAN_SNAPSHOT`, else
+  `.lotsman.snapshot` in the root — then refreshes: the first run hashes
+  every file and re-extracts what changed since the export, so an old
+  snapshot costs time, never correctness. Write one with
+  `lotsman index --export [PATH]` for a CI cache (or commit it, if the repo
+  can take a binary that grows its history on every re-export). SDK-Kitchen:
+  first query 3.9 s → 0.4 s. A snapshot of another index format is ignored
+  (`doctor` flags it).
 
 ## Limits
 

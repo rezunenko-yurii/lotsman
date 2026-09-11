@@ -12,7 +12,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import embed, indexer, scanner, wiring
+from lotsman import embed, indexer, scanner, snapshot, wiring
 from lotsman.extract import DEF_QUERIES, REF_QUERIES, _compile
 
 OK, WARN, FAIL = "ok", "warn", "fail"
@@ -78,8 +78,9 @@ def _check_embeddings() -> Check:
 def _check_index(root: Path) -> Check:
     db = indexer.db_path(root)
     if not db.exists():
+        how = "restore it from the snapshot" if snapshot.find(root) else "build it"
         return Check("index", WARN,
-                     ["no index yet — any read command will build it"],
+                     [f"no index yet — any read command will {how}"],
                      {"exists": False})
     store = indexer.open_store(root)
     try:
@@ -114,6 +115,25 @@ def _check_index(root: Path) -> Check:
         "db_bytes": stats["db_bytes"], "version_match": version == indexer.INDEX_VERSION,
         "stale_files": changed, "removed_files": gone, "rank_cache_warm": cache_warm,
     })
+
+
+def _check_snapshot(root: Path) -> Check:
+    path = snapshot.find(root)
+    if path is None:
+        return Check("snapshot", OK, ["none (`lotsman index --export` writes one)"],
+                     {"exists": False})
+    header = snapshot.read_header(path) or {}
+    version = header.get("index_version")
+    data = {"exists": True, "path": str(path), "files": header.get("files"),
+            "created": header.get("created"), "version_match": version == indexer.INDEX_VERSION}
+    details = [f"{path}: {header.get('files')} files, {header.get('created')}"]
+    if not header:
+        return Check("snapshot", WARN, [f"{path} is not a lotsman snapshot"], data)
+    if version != indexer.INDEX_VERSION:
+        details.append(f"index format {version} != {indexer.INDEX_VERSION} — "
+                       "a missing index is built instead; re-export it")
+        return Check("snapshot", WARN, details, data)
+    return Check("snapshot", OK, details, data)
 
 
 def _check_ignore(root: Path) -> Check:
@@ -160,6 +180,7 @@ def collect_checks(root: Path) -> list[Check]:
         _check_docs_search(),
         _check_embeddings(),
         _check_index(root),
+        _check_snapshot(root),
         _check_ignore(root),
         _check_wiring(root),
         _check_change_detection(root),

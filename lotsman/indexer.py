@@ -9,8 +9,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lotsman import (callcheck, csdefines, docs, extract, jsonrefs, scanner, unity,
-                     unityassets, wiring)
+from lotsman import (callcheck, csdefines, docs, extract, jsonrefs, scanner, snapshot,
+                     unity, unityassets, wiring)
 from lotsman.store import Store
 
 DB_RELPATH = ".lotsman/index.db"
@@ -95,7 +95,17 @@ def db_path(root: Path) -> Path:
 
 
 def open_store(root: Path) -> Store:
-    return Store(db_path(root))
+    """Open the index; a missing one restores from a snapshot if there is
+    one (`store.restored` says how that went; the next index run refreshes)."""
+    db = db_path(root)
+    restored = None if db.exists() else snapshot.restore(root, db, INDEX_VERSION)
+    store = Store(db)
+    store.restored = restored
+    return store
+
+
+def export_snapshot(store: Store, dest: Path) -> dict:
+    return snapshot.export(store.conn, dest, INDEX_VERSION)
 
 
 def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
@@ -215,7 +225,8 @@ def index_repo(root: Path, store: Store, verify: bool = False) -> IndexResult:
                 if rec.lang == "csharp":
                     directives = csdefines.scan(data)
                     arities = _arities(data, symbols)
-                    if prev is not None:
+                    # A row restored from a snapshot is not an edit made here.
+                    if prev is not None and prev[1] != snapshot.RESTORED_MTIME:
                         _note_sig_changes(store, rec.path, arities)
                 wired, wired_lines = wiring.apply_with_lines(patterns, data)
                 idents.update(wired)

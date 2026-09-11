@@ -11,7 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from lotsman import (embed, extract, indexer, outlineview, querylog, refsview,
-                     repomap, search as search_mod, sliceview)
+                     repomap, search as search_mod, sliceview, snapshot)
 from lotsman.store import Store
 from lotsman.textutil import is_test_path
 
@@ -36,22 +36,33 @@ def _root(args) -> Path:
 def _open(root: Path, auto_index: bool = True) -> Store:
     """Open the index, keeping read commands fresh before serving results."""
     db = indexer.db_path(root)
-    if not db.exists():
-        if not auto_index:
-            sys.exit("error: no index found — run `lotsman index` first")
-        store = Store(db)
-        res = indexer.index_repo(root, store)
+    if not db.exists() and not auto_index:
+        sys.exit("error: no index found — run `lotsman index` first")
+    built = not db.exists()
+    store = indexer.open_store(root)
+    built = built and not _say_restored(store)
+    res = indexer.index_repo(root, store)
+    if built:
         print(f"[lotsman] first-time index: {res.added} files in {res.seconds:.1f}s",
               file=sys.stderr)
-        _warn_degraded(res)
-        return store
-    store = Store(db)
-    res = indexer.index_repo(root, store)
-    if res.added or res.updated or res.removed:
+    elif res.added or res.updated or res.removed:
         print(f"[lotsman] index refreshed: +{res.added} ~{res.updated} "
               f"-{res.removed}", file=sys.stderr)
     _warn_degraded(res)
     return store
+
+
+def _say_restored(store: Store) -> bool:
+    """Report a snapshot restore on stderr; True when the index came from one."""
+    r = store.restored
+    if r is None:
+        return False
+    if r.note:
+        print(f"[lotsman] snapshot not used: {r.note}", file=sys.stderr)
+        return False
+    print(f"[lotsman] index restored from {r.path} ({r.files} files, "
+          f"{r.seconds:.1f}s); refreshing", file=sys.stderr)
+    return True
 
 
 def _warn_degraded(res) -> None:
@@ -63,6 +74,7 @@ def _warn_degraded(res) -> None:
 def cmd_index(args) -> int:
     root = _root(args)
     store = indexer.open_store(root)
+    restored = _say_restored(store)
     res = indexer.index_repo(root, store, verify=args.verify)
     _warn_degraded(res)
     embedded = 0
@@ -75,16 +87,24 @@ def cmd_index(args) -> int:
         elif not embed.available():
             print("[lotsman] embeddings unavailable (pip install model2vec) — "
                   "search will use BM25 only", file=sys.stderr)
+    snap = None
+    if args.export is not None:
+        dest = Path(args.export) if args.export else snapshot.default_path(root)
+        snap = indexer.export_snapshot(store, dest.resolve())
     stats = store.stats()
     store.close()
     if args.json:
-        print(json.dumps({**res.__dict__, **stats, "embedded": embedded},
+        print(json.dumps({**res.__dict__, **stats, "embedded": embedded,
+                          "restored": restored, "snapshot": snap},
                          ensure_ascii=False))
     else:
         print(f"scanned {res.scanned} | +{res.added} added, ~{res.updated} updated, "
               f"-{res.removed} removed, ={res.unchanged} unchanged | {res.seconds:.2f}s")
         print(f"index: {stats['symbols']} symbols, {stats['files']} files, "
               f"{stats['db_bytes'] // 1024} KiB")
+        if snap:
+            print(f"snapshot: {snap['path']} ({snap['files']} files, "
+                  f"{snap['bytes'] // 1024} KiB, {snap['seconds']:.1f}s)")
         for err in res.errors[:10]:
             print(f"warn: {err}", file=sys.stderr)
     return 0
@@ -382,6 +402,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--verify", action="store_true",
                     help="re-hash every file, bypassing the mtime+size fast "
                          "path (catches stale-index edge cases)")
+    sp.add_argument("--export", nargs="?", const="", metavar="PATH",
+                    help="also write a compressed snapshot (default "
+                         f"{snapshot.DEFAULT_REL}); a missing index restores from "
+                         f"it, or from ${snapshot.SNAPSHOT_ENV}")
     sp.set_defaults(fn=cmd_index)
 
     sp = sub.add_parser("map", help="token-budgeted map of the most important symbols")

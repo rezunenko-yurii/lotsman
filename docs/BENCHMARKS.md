@@ -496,6 +496,22 @@ First CLI query in a fresh index location on the private project: 3.9 s
 zlib over lzma: lzma packs 13% smaller but took 16.6 s to write 47 MB
 (zlib 1.2 s) and 1.6 s to read (0.06 s).
 
+## Truncated Lists (X4 evidence)
+
+`benchmarks/bench_truncation.py --db <index>`, 2026-09-11: how often an
+output is cut at its default limit (300 random C# names, 100 files).
+
+| Corpus | `refs` Type | `refs` method | `change` | `impact` FILE |
+|---|---:|---:|---:|---:|
+| Private Unity project | 1% | 8% | 0% | 36% |
+| Chop Chop | 1% | 1% | 0.3% | 7% |
+
+A cut `refs` page is ~500–740 tokens, a cut `impact` page ~1.5k: getting
+the rest today means a re-call with a bigger limit that reads that page
+again. B0 lost no answer to a limit. Continuation cursors and output
+profiles (X4) are deferred until the query log (T0) shows agents re-calling
+with a raised limit.
+
 ## Early Recommendations
 
 These are recommendations from the current corpus, not final language rankings.

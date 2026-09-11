@@ -6,8 +6,9 @@ update the checkboxes and "Measured" lines as items land.
 ## Handoff (read first in a new session)
 
 State on 2026-09-11 (later): A1, P1, U0, V1, G1, U1, X1, X2 and X3 done
-and committed too; **next: X4, X5** (X1/X2 are CLI-only: no MCP tool budget
-left). B0 now 45,960 tokens, found 0.99 (X1–X3 have no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
+and committed too; X4 and X5 measured and **deferred until T0** (read the
+query log after 2026-09-17, then decide; X1/X2 are CLI-only: no MCP tool
+budget left). B0 now 45,960 tokens, found 0.99 (X1–X3 have no B0 question). Before that: B0, T0, D1, C1, J1 done and committed on branch
 `claude/wizardly-agnesi-511e02` (worktree
 `/Users/exhale/Projects/ClaudePlayground/lotsman/.claude/worktrees/wizardly-agnesi-511e02`).
 `main` has only the query-log commit (f82cb5f); the 1.7 branch is not merged,
@@ -622,9 +623,29 @@ project; B0 has no V1 question — the harness cannot seed edits):
 - **X4. Profiles and cursors**: `--profile compact|full` and a continuation
   cursor for `refs`, `search`, `impact`, `change`; MCP returns `next_cursor`
   (idea from Unity Open MCP) instead of truncating.
+
+  Status: **deferred until T0** (2026-09-11, decided with the user).
+  Measured (`benchmarks/bench_truncation.py`, 300 random names / 100 files
+  per corpus): cut at the default limit — `refs` types 1% / 1%, methods
+  8% / 1% (SDK-Kitchen / Chop Chop), `change` 0% / 0.3%, `impact` 36% / 7%.
+  A cut `refs` page is ~500–740 tokens (a re-call with a bigger limit reads
+  it twice; a cursor would not), a cut `impact` page ~1.5k. B0 lost no
+  answer to a limit (28/28 questions; the one partial, change-06, misses
+  JSON string uses, not a cut list). Cursor + profile parameters on four
+  MCP tools would add ~150 schema tokens to every session for a saving
+  only when a cut list is continued. Revisit with T0: repeated calls with
+  a raised limit in the query log would show the need; `impact` (CLI
+  cursor, no MCP change) is the first candidate.
 - **X5. `brief "task"`**: one budgeted call — mention-personalized map, code
   and doc search hits, relevant AGENTS.md sections. Only if B0/T0 show that
   the start of a task is a real cost.
+
+  Status: **not justified by B0; wait for T0** (2026-09-11). B0: median
+  1.5 lotsman calls and 591 tokens per question, first call already the
+  right command (search 10, change 7, unity 6, refs 4 of 28); the costly
+  questions (docs-04/-07, ~11k tokens) pay for reading doc files (D1), not
+  for orienting. T0 (query log, flag until 2026-09-17) shows whether real
+  sessions spend their first calls orienting.
 
 ### G1 — Public game corpus
 

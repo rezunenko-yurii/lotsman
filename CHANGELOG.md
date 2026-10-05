@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — 2026-10-05
+
+Unity project release: the index now covers what surrounds the C# — docs,
+JSON configs, assemblies, `#if` branches and assets — and answers change
+questions in one call (`change`, `why`, `unused`, `unity`). The index format
+changed (`INDEX_VERSION` 12): the first run after upgrading rebuilds it
+automatically.
 
 - **Index snapshots: `lotsman index --export [PATH]`.** Writes the index as
   one compressed file (zlib; default `.lotsman.snapshot` in the root) for a
